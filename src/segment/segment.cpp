@@ -1,4 +1,5 @@
 #include "segment/segment.hpp"
+#include <limits>
 
 #define N_FRAME 5
 
@@ -7,88 +8,92 @@ int tem_gnd_num = 0;
 
 PCSeg::PCSeg()
 {
-    this->posFlag=0;
-    this->pVImg=(unsigned char*)calloc(DN_SAMPLE_IMG_NX*DN_SAMPLE_IMG_NY*DN_SAMPLE_IMG_NZ,sizeof(unsigned char));
-    this->corPoints=NULL;
+  this->posFlag = 0;
+  this->pVImg = (unsigned char*)calloc(DN_SAMPLE_IMG_NX*DN_SAMPLE_IMG_NY*DN_SAMPLE_IMG_NZ,sizeof(unsigned char));
+  this->corPoints = NULL;
 }
 PCSeg::~PCSeg()
 {
-    if(this->pVImg!=NULL)
-    {
-        free(this->pVImg);
-    }
-    if(this->corPoints!=NULL)
-    {
-        free(this->corPoints);
-    }
+  if (this->pVImg != NULL) {
+    free(this->pVImg);
+  }
+  if (this->corPoints != NULL) {
+    free(this->corPoints);
+  }
 }
 
 int PCSeg::DoSeg(int *pLabel1, float* fPoints1, int pointNum)
 {
+    // 1. 下采样降体素处理
+    float *fPoints2 = (float*)calloc(pointNum*4, sizeof(float));
+    int *idtrans1 = (int*)calloc(pointNum, sizeof(int));
+    int *idtrans2 = (int*)calloc(pointNum, sizeof(int));
+    int pntNum = 0;
 
-    // 1 down sampling
-    float *fPoints2=(float*)calloc(pointNum*4,sizeof(float));
-    int *idtrans1=(int*)calloc(pointNum,sizeof(int));
-    int *idtrans2=(int*)calloc(pointNum,sizeof(int));
-    int pntNum=0;
-    if (this->pVImg == NULL)
-    {
-        this->pVImg=(unsigned char*)calloc(DN_SAMPLE_IMG_NX*DN_SAMPLE_IMG_NY*DN_SAMPLE_IMG_NZ,sizeof(unsigned char));
+    if (this->pVImg == NULL) {
+      this->pVImg = (unsigned char*)calloc(DN_SAMPLE_IMG_NX*DN_SAMPLE_IMG_NY*DN_SAMPLE_IMG_NZ, sizeof(unsigned char));
     }
-    memset(pVImg,0,sizeof(unsigned char)*DN_SAMPLE_IMG_NX*DN_SAMPLE_IMG_NY*DN_SAMPLE_IMG_NZ);//600*200*30  
-    
-    for(int pid=0;pid<pointNum;pid++)
-    {
-        int ix=(fPoints1[pid*4]+DN_SAMPLE_IMG_OFFX)/DN_SAMPLE_IMG_DX; //0-240m -> -40-190m
-        int iy=(fPoints1[pid*4+1]+DN_SAMPLE_IMG_OFFY)/DN_SAMPLE_IMG_DY; //-40-40m
-        int iz=(fPoints1[pid*4+2]+DN_SAMPLE_IMG_OFFZ)/DN_SAMPLE_IMG_DZ;//认为地面为-1.8？ -2.5~17.5
+    else {
+      memset(pVImg, 0, sizeof(unsigned char)*DN_SAMPLE_IMG_NX*DN_SAMPLE_IMG_NY*DN_SAMPLE_IMG_NZ); // 600*200*100
+    }
 
-        idtrans1[pid]=-1;
-        if((ix>=0)&&(ix<DN_SAMPLE_IMG_NX)&&(iy>=0)&&(iy<DN_SAMPLE_IMG_NY)&&(iz>=0)&&(iz<DN_SAMPLE_IMG_NZ)) //DN_SAMPLE_IMG_OFFX = 0 因此只保留前半块
-        {
-            idtrans1[pid]=iz*DN_SAMPLE_IMG_NX*DN_SAMPLE_IMG_NY+iy*DN_SAMPLE_IMG_NX+ix; //记录这个点对应的索引
-            if(pVImg[idtrans1[pid]]==0)//没有访问过，肯定栅格内会有重复的，所以fPoints2只取第一个
-            {
-                fPoints2[pntNum*4]=fPoints1[pid*4];
-                fPoints2[pntNum*4+1]=fPoints1[pid*4+1];
-                fPoints2[pntNum*4+2]=fPoints1[pid*4+2];
-                fPoints2[pntNum*4+3]=fPoints1[pid*4+3];
+    for(int i = 0; i < pointNum; i++) {
+      int ix = (fPoints1[i*4]   + DN_SAMPLE_IMG_OFFX) / DN_SAMPLE_IMG_DX; // 0-240m -> -40-190m
+      int iy = (fPoints1[i*4+1] + DN_SAMPLE_IMG_OFFY) / DN_SAMPLE_IMG_DY; // -40-40m
+      int iz = (fPoints1[i*4+2] + DN_SAMPLE_IMG_OFFZ) / DN_SAMPLE_IMG_DZ; // 认为地面为-1.8？ -2.5~17.5
+      
+      idtrans1[i] = -1;
+      if ((ix >= 0) && (ix < DN_SAMPLE_IMG_NX)
+        &&(iy >= 0) && (iy < DN_SAMPLE_IMG_NY)
+        &&(iz >= 0) && (iz < DN_SAMPLE_IMG_NZ)) //DN_SAMPLE_IMG_OFFX = 0 因此只保留前半块
+      {
+        // 记录这个点对应的索引
+        idtrans1[i] = iz * DN_SAMPLE_IMG_NX * DN_SAMPLE_IMG_NY + iy * DN_SAMPLE_IMG_NX + ix; 
+        
+        // 没有访问过，肯定栅格内会有重复的，所以fPoints2只取第一个
+        if(pVImg[idtrans1[i]] == 0) {
+          fPoints2[pntNum*4]   = fPoints1[i*4];
+          fPoints2[pntNum*4+1] = fPoints1[i*4+1];
+          fPoints2[pntNum*4+2] = fPoints1[i*4+2];
+          fPoints2[pntNum*4+3] = fPoints1[i*4+3];
 
-                idtrans2[pntNum]=idtrans1[pid];
-
-                pntNum++;
-            }
-            pVImg[idtrans1[pid]]=1;
+          idtrans2[pntNum] = idtrans1[i];
+          pntNum++;
         }
 
+        pVImg[idtrans1[i]] = 1 ; // 标记为已访问
+      }
     }
 
-    //先进行地面校正
-    float tmpPos[6];
-    tmpPos[0]=-0.15;
-    tmpPos[1]=0;
-    tmpPos[2]=1;
-    tmpPos[3]=0;
-    tmpPos[4]=0;
-    tmpPos[5]=-2.04;
-    GetGndPos(tmpPos,fPoints2,pntNum); //tempPos是更新后的地面搜索点 & 平均法向量 ys
-    memcpy(this->gndPos,tmpPos,6*sizeof(float));
-    
-    this->posFlag=1;//(this->posFlag+1)%SELF_CALI_FRAMES;
+    // 2. 进行地面校正
+    /* 以下代码为无效代码 */
+    // float tmpPos[6];
+    // tmpPos[0] = -0.15;
+    // tmpPos[1] = 0;
+    // tmpPos[2] = 1;
+    // tmpPos[3] = 0;
+    // tmpPos[4] = 0;
+    // tmpPos[5] = -2.04;
+    // GetGndPos(tmpPos, fPoints2, pntNum); //tempPos是更新后的地面搜索点 & 平均法向量ys
+    // memcpy(this->gndPos,tmpPos,6*sizeof(float));
+    GetGndPos(this->gndPos, fPoints2, pntNum); // 计算并平滑更新地面法向量与平面中心，结果直接存入类成员gndPos
+    this->posFlag=1; // (this->posFlag+1)%SELF_CALI_FRAMES;
 
-    // 3 点云矫正
-    this->CorrectPoints(fPoints2,pntNum,this->gndPos);
-    if(this->corPoints!=NULL)
+    // 2. 点云矫正
+    this->CorrectPoints(fPoints2, pntNum, this->gndPos);
+    if(this->corPoints != NULL) {
         free(this->corPoints);
-    this->corPoints=(float*)calloc(pntNum*4,sizeof(float));
-    this->corNum=pntNum;
-    memcpy(this->corPoints,fPoints2,4*pntNum*sizeof(float));
+    }
+    this->corPoints = (float*)calloc(pntNum*4,sizeof(float));
+    this->corNum = pntNum;
+    memcpy(this->corPoints, fPoints2, 4*pntNum*sizeof(float));
 
     // 4 粗略地面分割for地上分割
-    int *pLabelGnd=(int*)calloc(pntNum,sizeof(int));
-    int gnum=GndSeg(pLabelGnd,fPoints2,pntNum,1.0);
+    int *pLabelGnd = (int*)calloc(pntNum, sizeof(int));
+    int gnum = GndSeg(pLabelGnd, fPoints2, pntNum, 1.0);
 
     // 5 地上分割
+    // 对粗筛后的非地面障碍物点做二次前景/背景分类，并完成多层索引标签映射
     int agnum = pntNum-gnum;
     float *fPoints3=(float*)calloc(agnum*4,sizeof(float));
     int *idtrans3=(int*)calloc(agnum,sizeof(int));
@@ -122,7 +127,12 @@ int PCSeg::DoSeg(int *pLabel1, float* fPoints1, int pointNum)
         std::cout << "0 above ground points!\n";
     }
 
-  
+    /*
+                -1：超出栅格未分类无效点
+     *           0：地面点
+     *           1：背景立面墙体/大面积平整垂直平面
+     *           200：前景刚性障碍物（ICP匹配优先使用）
+    */
     for(int ii=0;ii<agcnt;ii++)
     {   
         if (pLabelAg[ii] >= 10)//前景为0 背景为1 物体分类后 >=10
@@ -158,12 +168,11 @@ int PCSeg::DoSeg(int *pLabel1, float* fPoints1, int pointNum)
     free(idtrans2);
     free(idtrans3);
     free(fPoints3);
-    
     free(pLabelAg);
     free(pLabelGnd);
-
-
     free(pLabel2);
+
+    return 0;
 }
 
 int PCSeg::GetMainVectors(float*fPoints, int* pLabel, int pointNum)
@@ -663,11 +672,12 @@ int AbvGndSeg(int *pLabel, float *fPoints, int pointNum)
     pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
     kdtree.setInputCloud (cloud);
 
-    SegBG(pLabel,cloud,kdtree,0.5); //背景label=1 前景0
+    SegBG(pLabel,cloud,kdtree,0.5);     // 背景label=1 前景0
 
     SegObjects(pLabel,cloud,kdtree,0.7);
 
     FreeSeg(fPoints,pLabel,pointNum);
+
     return 0;
 }
 
@@ -863,6 +873,7 @@ int SegObjects(int *pLabel, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::KdTr
             }
         }
     }
+    
     return labelId-10;
 }
 
@@ -1178,6 +1189,7 @@ int GndSeg(int* pLabel,float *fPoints,int pointNum,float fSearchRadius)
 SClusterFeature CalBBox(float *fPoints,int pointNum)
 {
     SClusterFeature cf;
+
      // 转换点云到pcl的格式
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -1185,44 +1197,52 @@ SClusterFeature CalBBox(float *fPoints,int pointNum)
     cloud->height=1;
     cloud->points.resize(cloud->width*cloud->height);
 
-    for (int pid=0;pid<cloud->points.size();pid++)
+    for (int pid=0; pid < cloud->points.size(); pid++)
     {
-        cloud->points[pid].x=fPoints[pid*4];
-        cloud->points[pid].y=fPoints[pid*4+1];
-        cloud->points[pid].z=0;//fPoints[pid*4+2];
+        cloud->points[pid].x = fPoints[pid*4];
+        cloud->points[pid].y = fPoints[pid*4+1];
+        // z=0, 相当于将所有点投影在XOY平面上
+        cloud->points[pid].z = 0; // fPoints[pid*4+2]; 
     }
 
-    //调用pcl的kdtree生成方法
-    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-    kdtree.setInputCloud (cloud);
+    // 调用pcl的kdtree生成方法
+    // 这里并没有调用，可以屏蔽
+    // pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    // kdtree.setInputCloud(cloud);
 
-    //计算特征向量和特征值
-    Eigen::Vector4f pcaCentroid;
-    pcl::compute3DCentroid(*cloud, pcaCentroid);
-    Eigen::Matrix3f covariance;
-    pcl::computeCovarianceMatrixNormalized(*cloud, pcaCentroid, covariance);
+    // 计算特征向量和特征值
+    Eigen::Vector4f pcaCentroid;                 // 点云在XOY平面投影的质心
+    pcl::compute3DCentroid(*cloud, pcaCentroid); // 计算点云在XOY平面投影的质心
+    Eigen::Matrix3f covariance;                  // 点云在XOY平面投影的协方差
+    pcl::computeCovarianceMatrixNormalized(*cloud, pcaCentroid, covariance);  // 计算点云在XOY平面投影的协方差
+
+    // 通过特征值求解器求对应的特征向量与特征值
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(covariance, Eigen::ComputeEigenvectors);
-
     Eigen::Matrix3f eigenVectorsPCA = eigen_solver.eigenvectors();
     Eigen::Vector3f eigenValuesPCA = eigen_solver.eigenvalues();
-    float vsum = eigenValuesPCA(0)+eigenValuesPCA(1)+eigenValuesPCA(2);
-    eigenValuesPCA(0) = eigenValuesPCA(0)/(vsum+0.000001);
-    eigenValuesPCA(1) = eigenValuesPCA(1)/(vsum+0.000001);
-    eigenValuesPCA(2) = eigenValuesPCA(2)/(vsum+0.000001);
 
-    cf.d0[0]=eigenVectorsPCA(0,2);
-    cf.d0[1]=eigenVectorsPCA(1,2);
-    cf.d0[2]=eigenVectorsPCA(2,2);
+    float vsum = eigenValuesPCA(0) + eigenValuesPCA(1) + eigenValuesPCA(2);
+    eigenValuesPCA(0) = eigenValuesPCA(0) / (vsum + 0.000001);
+    eigenValuesPCA(1) = eigenValuesPCA(1) / (vsum + 0.000001);
+    eigenValuesPCA(2) = eigenValuesPCA(2) / (vsum + 0.000001);
 
-    cf.d1[0]=eigenVectorsPCA(0,1);
-    cf.d1[1]=eigenVectorsPCA(1,1);
-    cf.d1[2]=eigenVectorsPCA(2,1);
+    // 云特征主方向
+    cf.d0[0] = eigenVectorsPCA(0,2);
+    cf.d0[1] = eigenVectorsPCA(1,2);
+    cf.d0[2] = eigenVectorsPCA(2,2);
 
-    cf.center[0]=pcaCentroid(0);
-    cf.center[1]=pcaCentroid(1);
-    cf.center[2]=pcaCentroid(2);
+    // 云特征次方向
+    cf.d1[0] = eigenVectorsPCA(0,1);
+    cf.d1[1] = eigenVectorsPCA(1,1);
+    cf.d1[2] = eigenVectorsPCA(2,1);
 
-    cf.pnum=pointNum;
+    // 云特征质心
+    cf.center[0] = pcaCentroid(0);
+    cf.center[1] = pcaCentroid(1);
+    cf.center[2] = pcaCentroid(2);
+
+    // 云特征点数
+    cf.pnum = pointNum;
 
     return cf;
 }
@@ -1230,203 +1250,217 @@ SClusterFeature CalBBox(float *fPoints,int pointNum)
 SClusterFeature CalOBB(float *fPoints,int pointNum)
 {
     SClusterFeature cf;
-    cf.pnum=pointNum;
+    float *hoff = (float*)calloc(20000, sizeof(float));
+    float *rxy = (float*)calloc(pointNum*2, sizeof(float));
+    float coef_as[180] = {0.0f}; 
+    float coef_bs[180] = {0.0f};
+    float area_min = std::numeric_limits<float>::max();    // 浮点数最大值
+    float area_cur = 0.0f;
+    int hnum = 0;
+    // float area =-1000; // 1000000;
+    //int ori = -1;     // 没被使用
+    //int angid = 0;    // 没被使用
 
-    float *hoff=(float*)calloc(20000,sizeof(float));
-    int hnum=0;
+    cf.pnum = pointNum;
 
-    float coef_as[180],coef_bs[180];
-    for(int ii=0;ii<180;ii++)
+    for(int i = 0; i < 180; i++)
     {
-        coef_as[ii]=cos(ii*0.5/180*FREE_PI);
-        coef_bs[ii]=sin(ii*0.5/180*FREE_PI);
+        coef_as[i] = cos(i * 0.5 / 180 * FREE_PI);
+        coef_bs[i] = sin(i * 0.5 / 180 * FREE_PI);
     }
 
-    float *rxy=(float*)calloc(pointNum*2,sizeof(float));
-
-    float area=-1000;//1000000;
-    int ori=-1;
-    int angid=0;
-    for(int ii=0;ii<180;ii++)
+    for(int ii = 0; ii < 180; ii++)
     {
+        //float a_min=10000,a_max=-10000;
+        //float b_min=10000,b_max=-10000;
+        float a_min = std::numeric_limits<float>::max();    // 浮点数最大值
+        float a_max = std::numeric_limits<float>::lowest(); // 浮点数最小值
+        float b_min = std::numeric_limits<float>::max();    // 浮点数最大值
+        float b_max = std::numeric_limits<float>::lowest(); // 浮点数最小值
+        float val = 0.0f;
+        // 遍历点云
+        for(int j = 0; j < pointNum; j++) {
+            // x' = x * cos(theta_ii) + y * sin(theta_ii) 
+            val = fPoints[j*4] * coef_as[ii] + fPoints[j*4+1] * coef_bs[ii];
+            if(a_min > val) {
+                a_min = val;
+            }
+            if(a_max < val) {
+                a_max = val;
+            }
+            rxy[j*2] = val;
 
-        float a_min=10000,a_max=-10000;
-        float b_min=10000,b_max=-10000;
-        for(int pid=0;pid<pointNum;pid++)
-        {
-            float val=fPoints[pid*4]*coef_as[ii]+fPoints[pid*4+1]*coef_bs[ii];// x*cos + y*sin 这是把每个点旋转一下，然后求旋转后点云的xy最大最小值 sy
-            if(a_min>val)
-                a_min=val;
-            if(a_max<val)
-                a_max=val;
-            rxy[pid*2]=val;
-
-            val=fPoints[pid*4+1]*coef_as[ii]-fPoints[pid*4]*coef_bs[ii];
-            if(b_min>val)
-                b_min=val;
-            if(b_max<val)
-                b_max=val;
-            rxy[pid*2+1]=val;
+            // y' = x * cos(theta_ii) - y * sin(theta_ii)
+            val = fPoints[j*4+1] * coef_as[ii] - fPoints[j*4] * coef_bs[ii];
+            if(b_min > val) {
+                b_min = val;
+            }
+            if(b_max<val) {
+                b_max = val;
+            }
+            rxy[j*2+1] = val;
         }
 
-        float weights=0;
+        // 通过直方图智能切边处理：裁剪空白且中心对齐原则。
+        // a -> x'
+        float weights_a = 0;
+        hnum = (a_max - a_min) * 20; // 20 = 1 / 0.05
+        for(int ih = 0; ih < hnum; ih++) {
+            hoff[ih] = 0;
+        }
+        for(int pid = 0; pid < pointNum; pid++) {
+            int ix0 = (rxy[pid*2] - a_min) * 20; // 20 = 1 / 0.05
+            hoff[ix0] += 1;
+        }
+        // 寻找a直方图最大值及对应索引
+        int mh_a = -1;
+        for(int ih = 0; ih < hnum; ih++) {
+            if(hoff[ih] > weights_a) {
+              weights_a = hoff[ih]; // 保存最大计数值
+              mh_a = ih;              // 保存最大值对应索引
+            }
+        }
+        if (mh_a > 0) {
+            if (mh_a*3 < hnum) { // 密集区偏左
+                // a_min = a_min + mh_a * 0.05 / 2.0;  // 原代码疑似有Bug
+                a_max -= (hnum - mh_a) * 0.05 / 2.0;
+            }
+            else if ((hnum-mh_a)*3 < hnum) { // 密集区偏右
+                // a_max = a_max - (hnum - mh_a) * 0.05 /2.0;  // 原代码疑似有Bug
+                a_min += mh_a * 0.05 / 2.0;
+            }
+        }
 
-        hnum=(a_max-a_min)/0.05;
-        for(int ih=0;ih<hnum;ih++)
-        {
+        // b -> y'
+        float weights_b = 0;
+        hnum = (b_max - b_min) *20; // 20 = 1/0.05;
+        for(int ih = 0; ih<hnum; ih++) {
             hoff[ih]=0;
         }
-        for(int pid=0;pid<pointNum;pid++)
-        {
-            int ix0=(rxy[pid*2]-a_min)*20;
-            hoff[ix0]+=1;
-        }
-
-        int mh=-1;
-        for(int ih=0;ih<hnum;ih++)
-        {
-            if(hoff[ih]>weights)
-            {
-              weights=hoff[ih];
-              mh=ih;
-            }
-        }
-
-        if (mh>0)
-        {
-            if(mh*3<hnum)
-            {
-                a_min=a_min+mh*0.05/2;
-            }
-            else if((hnum-mh)*3<hnum)
-            {
-                a_max=a_max-(hnum-mh)*0.05/2;
-            }
-        }
-
-        // --y
-        float weights1=0;
-        hnum=(b_max-b_min)/0.05;
-        for(int ih=0;ih<hnum;ih++)
-        {
-            hoff[ih]=0;
-        }
-        for(int pid=0;pid<pointNum;pid++)
-        {
-            int iy0=(rxy[pid*2+1]-b_min)*20;
+        for(int pid = 0; pid < pointNum; pid++) {
+            int iy0 = (rxy[pid*2+1] - b_min) * 20;
             hoff[iy0]+=1;
         }
-        int mh1=-1;
-        for(int ih=0;ih<hnum;ih++)
-        {
-            if(hoff[ih]>weights1)
-            {
-                weights1=hoff[ih];
-                mh1=ih;
+        // 寻找b直方图最大值及对应索引
+        int mh_b = -1;
+        for(int ih = 0; ih < hnum; ih++) {
+            if(hoff[ih] > weights_b) {
+                weights_b = hoff[ih];
+                mh_b = ih;
             }
         }
-        if(mh1>0)
-        {
-            if(mh1*3<hnum)
-            {
-                b_min=b_min+mh1*0.05/2;
+        if(mh_b > 0) {
+            if(mh_b*3 < hnum) { // 密集区偏左
+                // b_min = b_min + mh_b * 0.05 / 2.0; // 原代码疑似有Bug
+                b_max -= (hnum - mh_b) * 0.05 / 2.0;
             }
-            else if((hnum-mh1)*3<hnum)
-            {
-                b_max=b_max-(hnum-mh1)*0.05/2;
+            else if((hnum-mh_b)*3 < hnum) { // 密集区偏右
+                // b_max = b_max - (hnum-mh_b) * 0.05 / 2.0; // 原代码疑似有Bug
+                b_min += mh_b * 0.05 / 2.0;
             }
         }
 
-        if(weights < weights1)
-        {
-            weights=weights1;
-        }
+        /* 无意义代码，屏蔽处理 */
+        //if(weights_a < weights_b)
+        //{
+        //    weights_a = weights_b;
+        //}
+        
+        /* 源代码数学及物理对不上 */
+        // if(weights_a > area) // (b_max-b_min)*(a_max-a_min)<area)
 
-        if(weights>area)//(b_max-b_min)*(a_max-a_min)<area)
-        {
-            area=weights;//(b_max-b_min)*(a_max-a_min);
-            ori=ii;
-            angid=ii;
+        /* 修改为如下：*/
+        area_cur = (a_max - a_min) * (b_max - b_min);
+        if (area_cur < area_min) {
+            //area = weights_a;  //(b_max-b_min)*(a_max-a_min);
+            area_min = area_cur; //(b_max-b_min)*(a_max-a_min);
+            //ori = ii;
+            //angid = ii;
 
-            cf.obb[0]=a_max*coef_as[ii]-b_max*coef_bs[ii];
-            cf.obb[1]=a_max*coef_bs[ii]+b_max*coef_as[ii];
+            cf.obb[0] = a_max * coef_as[ii] - b_max * coef_bs[ii];
+            cf.obb[1] = a_max * coef_bs[ii] + b_max * coef_as[ii];
 
-            cf.obb[2]=a_max*coef_as[ii]-b_min*coef_bs[ii];
-            cf.obb[3]=a_max*coef_bs[ii]+b_min*coef_as[ii];
+            cf.obb[2] = a_max * coef_as[ii] - b_min * coef_bs[ii];
+            cf.obb[3] = a_max * coef_bs[ii] + b_min * coef_as[ii];
 
-            cf.obb[4]=a_min*coef_as[ii]-b_min*coef_bs[ii];
-            cf.obb[5]=a_min*coef_bs[ii]+b_min*coef_as[ii];
+            cf.obb[4] = a_min * coef_as[ii] - b_min * coef_bs[ii];
+            cf.obb[5] = a_min * coef_bs[ii] + b_min * coef_as[ii];
 
-            cf.obb[6]=a_min*coef_as[ii]-b_max*coef_bs[ii];
-            cf.obb[7]=a_min*coef_bs[ii]+b_max*coef_as[ii];
+            cf.obb[6] = a_min * coef_as[ii] - b_max * coef_bs[ii];
+            cf.obb[7] = a_min * coef_bs[ii] + b_max * coef_as[ii];
 
-            cf.center[0]=(a_max+a_min)/2*coef_as[ii]-(b_max+b_min)/2*coef_bs[ii];
-            cf.center[1]=(a_max+a_min)/2*coef_bs[ii]+(b_max+b_min)/2*coef_as[ii];
-            cf.center[2]=0;
+            cf.center[0] = (a_max+a_min) / 2 * coef_as[ii] - (b_max + b_min) / 2 * coef_bs[ii];
+            cf.center[1] = (a_max+a_min) / 2 * coef_bs[ii] + (b_max + b_min) / 2 * coef_as[ii];
+            cf.center[2] = 0;
 
-            cf.d0[0]=coef_as[ii]; //相当于朝向角
-            cf.d0[1]=coef_bs[ii];
-            cf.d0[2]=0;
+            cf.d0[0] = coef_as[ii]; // 相当于朝向角
+            cf.d0[1] = coef_bs[ii];
+            cf.d0[2] = 0;
 
-            cf.xmin=a_min;
-            cf.xmax=a_max;
-            cf.ymin=b_min;
-            cf.ymax=b_max;
+            cf.xmin = a_min;
+            cf.xmax = a_max;
+            cf.ymin = b_min;
+            cf.ymax = b_max;
         }
     }
 
-    //center
-    cf.center[0]=0;
-    cf.center[1]=0;
-    cf.center[2]=0;
-    for(int pid=0;pid<pointNum;pid++)
-    {
-        cf.center[0]+=fPoints[pid*4];
-        cf.center[1]+=fPoints[pid*4+1];
-        cf.center[2]+=fPoints[pid*4+2];
+    // 不再使用hoff/rxy, 立即释放。
+    free(rxy);
+    free(hoff);
+
+    // 几何中心/无加权质心
+    cf.center[0] = 0.0f;
+    cf.center[1] = 0.0f;
+    cf.center[2] = 0.0f;
+    for(int i=0; i < pointNum; i++){
+      cf.center[0] += fPoints[i*4];
+      cf.center[1] += fPoints[i*4+1];
+      cf.center[2] += fPoints[i*4+2];
     }
+    cf.center[0] /= (pointNum + 0.0001);
+    cf.center[1] /= (pointNum + 0.0001);
+    cf.center[2] /= (pointNum + 0.0001);
 
-    cf.center[0]/=(pointNum+0.0001);
-    cf.center[1]/=(pointNum+0.0001);
-    cf.center[2]/=(pointNum+0.0001);
-
-    //z
-    float z_min=10000,z_max=-10000;
-    for(int pid=0;pid<pointNum;pid++)
-    {
-        if(fPoints[pid*4+2]>z_max)
-            z_max=fPoints[pid*4+2];
-        if(fPoints[pid*4+2]<z_min)
-            z_min=fPoints[pid*4+2];
+    // Z坐标区间
+    // float z_min = 10000.0f;
+    // float z_max =-10000.0f;
+    float z_min = std::numeric_limits<float>::max();    // 浮点数最大值
+    float z_max = std::numeric_limits<float>::lowest(); // 浮点数最小值
+    for(int i=0; i < pointNum; i++){
+      if(fPoints[i*4+2] > z_max){
+        z_max = fPoints[i*4+2];
+      }
+      if(fPoints[i*4+2]<z_min){
+        z_min = fPoints[i*4+2];
+      }
     }
-
-    cf.zmin=z_min;
-    cf.zmax=z_max;
+    cf.zmin = z_min;
+    cf.zmax = z_max;
 
     // 分类
-    cf.cls=0;
-    float dx=cf.xmax-cf.xmin;
-    float dy=cf.ymax-cf.ymin;
-    float dz=cf.zmax-cf.zmin;
-    if((dx>15)||(dy>15))// 太大
+    cf.cls = 0; // 默认为前景点云fkg
+    float dx = cf.xmax - cf.xmin;
+    float dy = cf.ymax - cf.ymin;
+    float dz = cf.zmax - cf.zmin;
+    if((dx > 15.0f)||(dy > 15.0f)) // X范围大于15米或Y范围大于15米 // 太大
     {
-        cf.cls=1;//bkg
+        cf.cls = 1; // bkg
     }
-    else if((dx>4)&&(dy>4))//太大
+    else if((dx > 4.0f)&&(dy > 4.0f)) // X范围大于4米且Y范围大于4米 //太大
     {
-        cf.cls=1;
+        cf.cls = 1; // bkg
     }
     else if((dz<0.5||cf.zmax<1) && (dx>3 || dy>3))//too large
     {
-        cf.cls=1;
+        cf.cls = 1; // bkg
     }
     else if(cf.zmax>3 && (dx<0.5 || dy<0.5))//too small
     {
-        cf.cls=1;
+        cf.cls = 1; // bkg
     }
     else if(dx<0.5 && dy<0.5)//too small
     {
-        cf.cls=1;
+        cf.cls = 1;
     }
     else if(dz<2&&(dx>6||dy>6||dx/dy>5||dy/dx>5))//too small
     {
@@ -1436,7 +1470,6 @@ SClusterFeature CalOBB(float *fPoints,int pointNum)
     {
         //cf.cls=1;
     }
-    
     else if(cf.center[0]>45 && (dx>=3 || dy>=3 || dx*dy>2.3))//太da
     {
         //cf.cls=1;
@@ -1454,8 +1487,5 @@ SClusterFeature CalOBB(float *fPoints,int pointNum)
         //cf.cls=1;
     }
 
-
-    free(rxy);
-    free(hoff);
     return cf;
 }

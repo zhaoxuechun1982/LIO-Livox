@@ -1,8 +1,9 @@
 #include "segment/pointsCorrect.hpp"
+#include <limits>
 
-float gnd_pos[6];
-int frame_count = 0;
-int frame_lenth_threshold = 5;//5 frames update
+static float gnd_pos[6];
+static int frame_count = 0;
+static int frame_lenth_threshold = 5;//5 frames update
 
 int GetNeiborPCA_cor(SNeiborPCA_cor &npca, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::KdTreeFLANN<pcl::PointXYZ> kdtree, pcl::PointXYZ searchPoint, float fSearchRadius)
 {
@@ -11,8 +12,8 @@ int GetNeiborPCA_cor(SNeiborPCA_cor &npca, pcl::PointCloud<pcl::PointXYZ>::Ptr c
 
     if(kdtree.radiusSearch(searchPoint,fSearchRadius,npca.neibors,k_dis)>5)
     {
-        subCloud->width=npca.neibors.size();
-        subCloud->height=1;
+        subCloud->width = npca.neibors.size();
+        subCloud->height = 1;
         subCloud->points.resize(subCloud->width*subCloud->height);
 
         for (int pid=0;pid<subCloud->points.size();pid++)//搜索半径内的地面点云 sy
@@ -42,81 +43,116 @@ int GetNeiborPCA_cor(SNeiborPCA_cor &npca, pcl::PointCloud<pcl::PointXYZ>::Ptr c
     return npca.neibors.size();
 }
 
-int FilterGndForPos_cor(float* outPoints,float*inPoints,int inNum)
+int FilterGndForPos_cor(float* outPoints, float* inPoints, int inNum)
 {
-    int outNum=0;
-    float dx=2;
-    float dy=2;
-    int x_len = 20;
-    int y_len = 10;
-    int nx=2*x_len/dx; //80
-    int ny=2*y_len/dy; //10
-    float offx=-20,offy=-10;
-    float THR=0.4;
-    
+  int outNum = 0;
+  float dx = 2;
+  float dy = 2;
+  int x_len = 20;
+  int y_len = 10;
+  int nx = 2 * x_len / dx; // 20
+  int ny = 2 * y_len / dy; // 10
+  float offx=-20,offy=-10;
+  float THR = 0.4;
+  
+  float* imgMinZ  = (float*)calloc(nx*ny, sizeof(float));
+  float* imgMaxZ  = (float*)calloc(nx*ny, sizeof(float));
+  float* imgSumZ  = (float*)calloc(nx*ny, sizeof(float));
+  float* imgMeanZ = (float*)calloc(nx*ny, sizeof(float));
+  int* imgNumZ = (int*)calloc(nx*ny, sizeof(int));
+  int* idtemp = (int*)calloc(inNum, sizeof(int));
 
-    float *imgMinZ=(float*)calloc(nx*ny,sizeof(float));
-    float *imgMaxZ=(float*)calloc(nx*ny,sizeof(float));
-    float *imgSumZ=(float*)calloc(nx*ny,sizeof(float));
-    float *imgMeanZ=(float*)calloc(nx*ny,sizeof(float));
-    int *imgNumZ=(int*)calloc(nx*ny,sizeof(int));
-    int *idtemp = (int*)calloc(inNum,sizeof(int));
-    for(int ii=0;ii<nx*ny;ii++)
-    {
-        imgMinZ[ii]=10;
-        imgMaxZ[ii]=-10;
-        imgMeanZ[ii] = -10;
-        imgSumZ[ii]=0;
-        imgNumZ[ii]=0;
+  for(int i = 0; i < nx*ny; i++) {
+    // imgMinZ[i] =  10.0f;
+    // imgMaxZ[i] = -10.0f;
+    imgMinZ[i] = std::numeric_limits<float>::max();
+    imgMaxZ[i] = std::numeric_limits<float>::lowest();
+    imgMeanZ[i] = -10.0f; // 无效占位数据初值
+    // imgSumZ[i] = 0.0f; // calloc已填充0
+    // imgNumZ[i] = 0;    // calloc已填充0
+  }
+
+  float inv_dx = 1.0f / dx;
+  float inv_dy = 1.0f / dy;
+
+  // ROI区域栅格地图统计
+  for(int i = 0; i < inNum; i++)
+  {   
+    idtemp[i] = -1;
+    int idx_pts = i*4;
+    int idy_pts = i*4+1;
+    int idz_pts = i*4+2;
+    // =======================
+    // 1. 只处理ROI范围内的点
+    // X: -20 ~ 20 米
+    // Y: -10 ~ 10 米
+    // =======================
+    if ( (inPoints[idx_pts] > -x_len) 
+      && (inPoints[idx_pts] <  x_len)
+      && (inPoints[idy_pts] > -y_len)
+      && (inPoints[idy_pts] <  y_len) ) {
+      // =======================
+      // 2. 计算这个点落在对应栅格
+      // idx = 栅格X编号
+      // idy = 栅格Y编号
+      // =======================
+      int idx = static_cast<int>((inPoints[idx_pts] - offx) * inv_dx);
+      int idy = static_cast<int>((inPoints[idy_pts] - offy) * inv_dy);
+      int grid_id = idx + idy * nx;  // 把二维栅格坐标 → 转成一维下标  
+      // 安全判断：越界直接跳过
+      if (grid_id < 0 || grid_id >= nx*ny) {
+        continue;
+      }
+      idtemp[i] = grid_id;  
+      // =======================
+      // 3. 开始统计这个栅格！
+      // =======================
+      imgSumZ[grid_id] += inPoints[idz_pts];
+      imgNumZ[grid_id] += 1;  
+      // 更新栅格最小Z
+      if(inPoints[idz_pts] < imgMinZ[grid_id]) {
+          imgMinZ[grid_id] = inPoints[idz_pts];
+      }  
+      // 更新栅格最大Z
+      if(inPoints[idz_pts] > imgMaxZ[grid_id]) {
+          imgMaxZ[grid_id] = inPoints[idz_pts];
+      }
+    }
+  }
+
+  for(int i = 0; i < inNum; i++)
+  {
+    if (outNum >= 60000) {
+      break;
     }
 
-    for(int pid=0;pid<inNum;pid++)
-    {
-        idtemp[pid] = -1;
-        if((inPoints[pid*4] > -x_len) && (inPoints[pid*4]<x_len)&&(inPoints[pid*4+1]>-y_len)&&(inPoints[pid*4+1]<y_len))
-        {
-            int idx=(inPoints[pid*4]-offx)/dx;
-            int idy=(inPoints[pid*4+1]-offy)/dy;
-            idtemp[pid] = idx+idy*nx;
-            if (idtemp[pid] >= nx*ny)
-                continue;
-            imgSumZ[idx+idy*nx] += inPoints[pid*4+2];
-            imgNumZ[idx+idy*nx] +=1;
-            if(inPoints[pid*4+2]<imgMinZ[idx+idy*nx])
-            {
-                imgMinZ[idx+idy*nx]=inPoints[pid*4+2];
-            }
-            if(inPoints[pid*4+2]>imgMaxZ[idx+idy*nx]){
-                imgMaxZ[idx+idy*nx]=inPoints[pid*4+2];
-            }
-        }
+    if (idtemp[i] > 0 && idtemp[i] < nx*ny) {
+      // 计算均值高度
+      imgMeanZ[idtemp[i]] = static_cast<float>(imgSumZ[idtemp[i]] / (imgNumZ[idtemp[i]] + 0.0001));
+        
+      // 最高点与均值高度差小于阈值0.4；点数大于3；均值高度小于1 
+      if ((imgMaxZ[idtemp[i]] - imgMeanZ[idtemp[i]]) < THR 
+        && imgNumZ[idtemp[i]] > 3 
+        && imgMeanZ[idtemp[i]] < 2.0) {
+       // imgMeanZ[idtemp[pid]]<0&&
+       outPoints[outNum*4]   = inPoints[i*4];
+       outPoints[outNum*4+1] = inPoints[i*4+1];
+       outPoints[outNum*4+2] = inPoints[i*4+2];
+       outPoints[outNum*4+3] = inPoints[i*4+3];
+       
+       outNum++;
+      }
     }
-    for(int pid=0;pid<inNum;pid++)
-    {
-        if (outNum >= 60000)
-            break;
-        if(idtemp[pid] > 0 && idtemp[pid] < nx*ny)
-        {
-            imgMeanZ[idtemp[pid]] = float(imgSumZ[idtemp[pid]]/(imgNumZ[idtemp[pid]] + 0.0001));
-            //最高点与均值高度差小于阈值；点数大于3；均值高度小于1 
-            if((imgMaxZ[idtemp[pid]] - imgMeanZ[idtemp[pid]]) < THR && imgNumZ[idtemp[pid]] > 3 && imgMeanZ[idtemp[pid]] < 2)
-            {// imgMeanZ[idtemp[pid]]<0&&
-                outPoints[outNum*4]=inPoints[pid*4];
-                outPoints[outNum*4+1]=inPoints[pid*4+1];
-                outPoints[outNum*4+2]=inPoints[pid*4+2];
-                outPoints[outNum*4+3]=inPoints[pid*4+3];
-                outNum++;
-            }
-        }
-    }
+  }
 
-    free(imgMinZ);
-    free(imgMaxZ);
-    free(imgSumZ);
-    free(imgMeanZ);
-    free(imgNumZ);
-    free(idtemp);
-    return outNum;
+  free(imgMinZ);
+  free(imgMaxZ);
+  free(imgSumZ);
+  free(imgMeanZ);
+  free(imgNumZ);
+  free(idtemp);
+
+  return outNum;
 }
 
 int CalGndPos_cor(float *gnd, float *fPoints,int pointNum,float fSearchRadius)
@@ -283,43 +319,44 @@ int CorrectPoints_cor(float *fPoints,int pointNum,float *gndPos)
     return 0;
 }
 
+int GetGndPos(float *pos, float *fPoints, int pointNum)
+{
+  float *fPoints3 = (float*)calloc(60000*4, sizeof(float));      // 地面点60000个对应0.96Mb内存
+  int pnum3 = FilterGndForPos_cor(fPoints3, fPoints, pointNum);  // 过滤地面点位姿
+  float tmpPos[6];
 
-int GetGndPos(float *pos, float *fPoints,int pointNum){
-    float *fPoints3=(float*)calloc(60000*4,sizeof(float));//地面点
-    int pnum3 = FilterGndForPos_cor(fPoints3,fPoints,pointNum);
-    float tmpPos[6];
-    if (pnum3 < 3)
-    {
-        std::cout << "too few ground points!\n";
-    }
-    int gndnum = CalGndPos_cor(tmpPos,fPoints3,pnum3,1.0);//用法向量判断，获取到法向量 & 地面搜索点，放到tmppos
-    if(gnd_pos[5]==0){
-        memcpy(gnd_pos,tmpPos,sizeof(tmpPos));
-    }
-    else{
+  if (pnum3 < 3) {
+    std::cout << "Too few ground points!" << std::endl;
+  }
 
-        if(frame_count<frame_lenth_threshold&&tmpPos[5]!=0){
-            if(gndnum>0&&abs(gnd_pos[0]-tmpPos[0])<0.1&&abs(gnd_pos[1]-tmpPos[1])<0.1){//更新法向量            
-                for(int i = 0;i<6;i++){
-                    gnd_pos[i] = (gnd_pos[i]+tmpPos[i])*0.5;
-                }
-                frame_count = 0;
-            }
-            else{
-                frame_count++;
-            }
+  // 用法向量判断，获取到法向量 & 地面搜索点，放到tmppos
+  int gndnum = CalGndPos_cor(tmpPos, fPoints3, pnum3, 1.0); 
+
+  if (gnd_pos[5] == 0) {
+    memcpy(gnd_pos, tmpPos, sizeof(tmpPos));
+  }
+  else {  
+    if (frame_count < frame_lenth_threshold && tmpPos[5] != 0) {
+      if (gndnum > 0 && abs(gnd_pos[0]-tmpPos[0]) < 0.1 && abs(gnd_pos[1]-tmpPos[1]) < 0.1) { //更新法向量
+        for(int i = 0; i < 6;i++) {
+          gnd_pos[i] = (gnd_pos[i]+tmpPos[i])*0.5;
         }
-        else if(tmpPos[5]!=0){
-            memcpy(gnd_pos,tmpPos,sizeof(tmpPos));
-            frame_count = 0;
-        }
+        frame_count = 0;
+      }
+      else{
+        frame_count++;
+      }
     }
+    else if(tmpPos[5] != 0) {
+      memcpy(gnd_pos, tmpPos, sizeof(tmpPos));
+      frame_count = 0;
+    }
+  }
    
-    memcpy(pos,gnd_pos,sizeof(float)*6);
+  memcpy(pos, gnd_pos, sizeof(float)*6);
+  free(fPoints3);
 
-    free(fPoints3);
-    
-    return 0;
+  return 0;
 }
 
 
