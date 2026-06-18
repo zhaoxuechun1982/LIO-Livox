@@ -22,7 +22,7 @@ vimuMsg(std::move(vIMU)){
   noise.block<3, 3>(9, 9) =  Eigen::Matrix3d::Identity() * acc_w * acc_w;
 }
 
-void IMUIntegrator::Reset(){
+void IMUIntegrator::Reset() {
   dq.setIdentity();
   dp.setZero();
   dv.setZero();
@@ -45,55 +45,62 @@ const Eigen::Vector3d & IMUIntegrator::GetBiasGyr() const {return linearized_bg;
 
 const Eigen::Vector3d& IMUIntegrator::GetBiasAcc() const {return linearized_ba;}
 
-const Eigen::Matrix<double, 15, 15>& IMUIntegrator::GetCovariance(){return covariance;}
+const Eigen::Matrix<double, 15, 15>& IMUIntegrator::GetCovariance() const {return covariance;}
 
-const Eigen::Matrix<double, 15, 15> & IMUIntegrator::GetJacobian() const {return jacobian;}
+const Eigen::Matrix<double, 15, 15>& IMUIntegrator::GetJacobian() const {return jacobian;}
 
-void IMUIntegrator::PushIMUMsg(const sensor_msgs::ImuConstPtr& imu){
+const std::vector<sensor_msgs::ImuConstPtr> & IMUIntegrator::GetIMUMsg() const {return vimuMsg;}
+
+void IMUIntegrator::PushIMUMsg(const sensor_msgs::ImuConstPtr& imu) {
   vimuMsg.push_back(imu);
 }
 void IMUIntegrator::PushIMUMsg(const std::vector<sensor_msgs::ImuConstPtr>& vimu){
   vimuMsg.insert(vimuMsg.end(), vimu.begin(), vimu.end());
 }
-const std::vector<sensor_msgs::ImuConstPtr> & IMUIntegrator::GetIMUMsg() const {return vimuMsg;}
 
-void IMUIntegrator::GyroIntegration(double lastTime){
+void IMUIntegrator::GyroIntegration(double lastTime)
+{
   double current_time = lastTime;
-  for(auto & imu : vimuMsg){
+  for(auto& imu : vimuMsg) {
     Eigen::Vector3d gyr;
     gyr << imu->angular_velocity.x,
-            imu->angular_velocity.y,
-            imu->angular_velocity.z;
+           imu->angular_velocity.y,
+           imu->angular_velocity.z;
     double dt = imu->header.stamp.toSec() - current_time;
     ROS_ASSERT(dt >= 0);
     Eigen::Matrix3d dR = Sophus::SO3d::exp(gyr*dt).matrix();
     Eigen::Quaterniond qr(dq*dR);
-    if (qr.w()<0)
+    if (qr.w() < 0) {
       qr.coeffs() *= -1;
+    }
     dq = qr.normalized();
     current_time = imu->header.stamp.toSec();
   }
 }
 
-void IMUIntegrator::PreIntegration(double lastTime, const Eigen::Vector3d& bg, const Eigen::Vector3d& ba){
+void IMUIntegrator::PreIntegration(double lastTime, const Eigen::Vector3d& bg, const Eigen::Vector3d& ba)
+{
   Reset();
   linearized_bg = bg;
   linearized_ba = ba;
   double current_time = lastTime;
-  for(auto & imu : vimuMsg){
+  for(auto& imu : vimuMsg) {
     Eigen::Vector3d gyr;
     gyr <<  imu->angular_velocity.x,
             imu->angular_velocity.y,
             imu->angular_velocity.z;
     Eigen::Vector3d acc;
     acc << imu->linear_acceleration.x * gnorm,
-            imu->linear_acceleration.y * gnorm,
-            imu->linear_acceleration.z * gnorm;
+           imu->linear_acceleration.y * gnorm,
+           imu->linear_acceleration.z * gnorm;
     double dt = imu->header.stamp.toSec() - current_time;
-    if(dt <= 0 )
+    if(dt <= 0 ) {
       ROS_WARN("dt <= 0");
+    }
+
     gyr -= bg;
     acc -= ba;
+    
     double dt2 = dt*dt;
     Eigen::Vector3d gyr_dt = gyr*dt;
     Eigen::Matrix3d dR = Sophus::SO3d::exp(gyr_dt).matrix();
@@ -126,26 +133,34 @@ void IMUIntegrator::PreIntegration(double lastTime, const Eigen::Vector3d& bg, c
     dv += dq.matrix()*acc*dt;
     Eigen::Matrix3d m3dR = dq.matrix()*dR;
     Eigen::Quaterniond qtmp(m3dR);
-    if (qtmp.w()<0)
+    if (qtmp.w()<0) 
+    {
       qtmp.coeffs() *= -1;
+    }
     dq = qtmp.normalized();
     dtime += dt;
     current_time = imu->header.stamp.toSec();
   }
 }
 
-Eigen::Vector3d IMUIntegrator::GetAverageAcc() {
-  int i = 0;
+Eigen::Vector3d IMUIntegrator::GetAverageAcc(void)
+{
+  int frame_count = 0;
   Eigen::Vector3d sum_acc(0, 0, 0);
-  for(auto & imu : vimuMsg){
+
+  for(auto & imu : vimuMsg) {
     Eigen::Vector3d acc;
     acc << imu->linear_acceleration.x * gnorm,
            imu->linear_acceleration.y * gnorm,
            imu->linear_acceleration.z * gnorm;
     sum_acc += acc;
-    i++;
-    if(i > 30) break;
-  }
-  return sum_acc / i;
-}
+    frame_count++;
 
+    // Maximum frame rate: 30 frames per second
+    if (frame_count > AVERAGE_ACC_FRAMES) {
+      break;
+    } 
+  }
+
+  return sum_acc / frame_count;
+}

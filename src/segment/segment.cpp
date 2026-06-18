@@ -76,7 +76,8 @@ int PCSeg::DoSeg(int *pLabel1, float* fPoints1, int pointNum)
     // tmpPos[5] = -2.04;
     // GetGndPos(tmpPos, fPoints2, pntNum); //tempPos是更新后的地面搜索点 & 平均法向量ys
     // memcpy(this->gndPos,tmpPos,6*sizeof(float));
-    GetGndPos(this->gndPos, fPoints2, pntNum); // 计算并平滑更新地面法向量与平面中心，结果直接存入类成员gndPos
+    // 计算并平滑更新地面法向量与平面中心，结果直接存入类成员gndPos
+    estimate_and_smooth_ground(this->gndPos, fPoints2, pntNum);
     this->posFlag=1; // (this->posFlag+1)%SELF_CALI_FRAMES;
 
     // 2. 点云矫正

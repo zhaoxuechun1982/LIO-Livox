@@ -17,7 +17,7 @@
         <rosparam param="Extrinsic_Tlb"> [0.9999161, 0.0026676,  0.0126707, -0.011,
                                          -0.0025826, 0.9999741, -0.0067201, -0.0234,
                                          -0.0126883, 0.0066868,  0.9998971,   0.044,
-                                                0.0,       0.0,        0.0,      1.0]</rosparam>
+                                                0.0,       0.0,        0.0,     1.0]</rosparam>
     </node>
 
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find lio_livox)/rviz_cfg/lio.rviz" />

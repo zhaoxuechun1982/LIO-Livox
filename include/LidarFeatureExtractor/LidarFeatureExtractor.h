@@ -92,8 +92,8 @@ public:
 			    pcl::PointCloud<PointType>::Ptr& laserNonFeature,
                             int Used_Line = 1);
     void FeatureExtract_Mid(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &msg,
-                                                   pcl::PointCloud<PointType>::Ptr& laserConerFeature,
-                                                   pcl::PointCloud<PointType>::Ptr& laserSurfFeature);
+                            pcl::PointCloud<PointType>::Ptr& laserConerFeature,
+                            pcl::PointCloud<PointType>::Ptr& laserSurfFeature);
 private:
     /** \brief lines used to extract lidar features */
     const int N_SCANS;

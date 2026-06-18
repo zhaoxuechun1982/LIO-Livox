@@ -17,7 +17,7 @@
 #include <iterator>
 #include <future>
 #include "MapManager/Map_Manager.h"
-#include "utils/ceresfunc.h"
+#include "utils/ceres_utils.hpp"
 #include "IMUIntegrator/IMUIntegrator.h"
 #include <chrono>
 

@@ -51,9 +51,7 @@ inline void quaternionNormalize(Eigen::Vector4d& q) {
  *  
  *    Format of q1 and q2 is as [x,y,z,w]
  */
-inline Eigen::Vector4d quaternionMultiplication(
-    const Eigen::Vector4d& q1,
-    const Eigen::Vector4d& q2) {
+inline Eigen::Vector4d quaternionMultiplication(const Eigen::Vector4d& q1, const Eigen::Vector4d& q2) {
   Eigen::Matrix4d L;
 
   // QXC: Hamilton
@@ -76,8 +74,7 @@ inline Eigen::Vector4d quaternionMultiplication(
  *    "Indirect Kalman Filter for 3D Attitude Estimation:
  *    A Tutorial for quaternion Algebra".
  */
-inline Eigen::Vector4d smallAngleQuaternion(
-    const Eigen::Vector3d& dtheta) {
+inline Eigen::Vector4d smallAngleQuaternion(const Eigen::Vector3d& dtheta) {
 
   Eigen::Vector3d dq = dtheta / 2.0;
   Eigen::Vector4d q;
@@ -104,8 +101,7 @@ inline Eigen::Vector4d smallAngleQuaternion(
  *    "Indirect Kalman Filter for 3D Attitude Estimation:
  *    A Tutorial for quaternion Algebra".
  */
-inline Eigen::Quaterniond getSmallAngleQuaternion(
-    const Eigen::Vector3d& dtheta) {
+inline Eigen::Quaterniond getSmallAngleQuaternion(const Eigen::Vector3d& dtheta) {
 
   Eigen::Vector3d dq = dtheta / 2.0;
   Eigen::Quaterniond q;
@@ -136,8 +132,7 @@ inline Eigen::Quaterniond getSmallAngleQuaternion(
  *    The input quaternion should be in the form
  *      [q1, q2, q3, q4(scalar)]^T
  */
-inline Eigen::Matrix3d quaternionToRotation(
-    const Eigen::Vector4d& q) {
+inline Eigen::Matrix3d quaternionToRotation(const Eigen::Vector4d& q) {
   // QXC: Hamilton
   const double& qw = q(3);
   const double& qx = q(0);
@@ -160,8 +155,7 @@ inline Eigen::Matrix3d quaternionToRotation(
  *    The input quaternion should be in the form
  *      [q1, q2, q3, q4(scalar)]^T
  */
-inline Eigen::Vector4d rotationToQuaternion(
-    const Eigen::Matrix3d& R) {
+inline Eigen::Vector4d rotationToQuaternion(const Eigen::Matrix3d& R) {
   Eigen::Vector4d score;
   score(0) = R(0, 0);
   score(1) = R(1, 1);

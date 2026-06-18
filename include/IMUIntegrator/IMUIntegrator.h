@@ -1,5 +1,6 @@
 #ifndef LIO_LIVOX_IMUINTEGRATOR_H
 #define LIO_LIVOX_IMUINTEGRATOR_H
+
 #include <sensor_msgs/Imu.h>
 #include <queue>
 #include <mutex>
@@ -8,7 +9,7 @@
 #include <ros/ros.h>
 #include "sophus/so3.hpp"
 
-class IMUIntegrator{
+class IMUIntegrator {
 public:
     IMUIntegrator();
 
@@ -53,14 +54,15 @@ public:
 
     /** \brief get average acceleration of IMU messages for initialization
      */
-    Eigen::Vector3d GetAverageAcc();
+    Eigen::Vector3d GetAverageAcc(void);
+
+    const std::vector<sensor_msgs::ImuConstPtr> & GetIMUMsg() const;
 
     /** \brief push IMU message to the IMU buffer vimuMsg
      * \param[in] imu: the IMU message need to be pushed
      */
     void PushIMUMsg(const sensor_msgs::ImuConstPtr& imu);
     void PushIMUMsg(const std::vector<sensor_msgs::ImuConstPtr>& vimu);
-    const std::vector<sensor_msgs::ImuConstPtr> & GetIMUMsg() const;
 
     /** \brief only integrate gyro information of each IMU message stored in vimuMsg
      * \param[in] lastTime: the left time boundary of vimuMsg
@@ -85,11 +87,11 @@ public:
 
     enum JacobianOrder
     {
-        O_P = 0,
-        O_R = 3,
-        O_V = 6,
-        O_BG = 9,
-        O_BA = 12
+      O_P = 0,
+      O_R = 3,
+      O_V = 6,
+      O_BG = 9,
+      O_BA = 12
     };
 private:
     std::vector<sensor_msgs::ImuConstPtr> vimuMsg;
@@ -102,6 +104,7 @@ private:
     Eigen::Matrix<double, 15, 15> jacobian;
     Eigen::Matrix<double, 12, 12> noise;
     double dtime;
+    static constexpr int AVERAGE_ACC_FRAMES = 30; 
 };
 
-#endif //LIO_LIVOX_IMUINTEGRATOR_H
+#endif // LIO_LIVOX_IMUINTEGRATOR_H

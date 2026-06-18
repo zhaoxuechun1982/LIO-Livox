@@ -50,17 +50,18 @@ catkin_package(CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs messa
 	       eigen_conversions DEPENDS PCL OpenCV INCLUDE_DIRS include)
 
 add_executable (ScanRegistration 
-		src/lio/ScanRegistration.cpp
-		src/lio/LidarFeatureExtractor.cpp
+		    src/app/node_scan_registration.cpp
+		    src/lio/LidarFeatureExtractor.cpp
         	src/segment/segment.cpp
-        	src/segment/pointsCorrect.cpp)
+        	src/segment/points_correct.cpp
+			src/utils/point_cloud_utils.cpp)
 target_link_libraries(ScanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
 
 add_executable (PoseEstimation 
-		src/lio/PoseEstimation.cpp
+		src/app/node_pose_estimation.cpp
 		src/lio/Estimator.cpp
 		src/lio/IMUIntegrator.cpp
-		src/lio/ceresfunc.cpp 
+		src/lio/ceres_utils.cpp 
 		src/lio/Map_Manager.cpp)
 target_link_libraries(PoseEstimation ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
