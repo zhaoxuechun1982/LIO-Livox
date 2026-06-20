@@ -172,7 +172,15 @@ bool ImuAligner::solve_ceres_problem(const std::deque<LidarFrame>& frames,
                                      const Eigen::Vector3d& prior_r,
                                      const std::vector<Eigen::Vector3d>& prior_v_list)
 {
-  int v_list_size = static_cast<int>(frames.size());
+  static size_t max_frame_num = 200;
+  
+  size_t v_list_size = frames.size();
+  if (v_list_size > max_frame_num)
+  {
+    ROS_WARN("[ImuAligner][solve_ceres_problem] Input frames size exceeds upper limit!");
+    return false;
+  }
+
   if (v_list_size < 2) {
     ROS_WARN("[ImuAligner][solve_ceres_problem] Input frames size is not enough!");
     return false;
@@ -189,7 +197,7 @@ bool ImuAligner::solve_ceres_problem(const std::deque<LidarFrame>& frames,
   // double para_v_list[v_list_size][3] = {0.0};
   double (*para_v_list)[3] = new double[v_list_size][3]{};
 
-  for (int i = 0; i < v_list_size; i++) {
+  for (size_t i = 0; i < v_list_size; i++) {
     for (int j = 0; j < 3; j++) {
       para_v_list[i][j] = prior_v_list[i][j];
     }
@@ -206,7 +214,7 @@ bool ImuAligner::solve_ceres_problem(const std::deque<LidarFrame>& frames,
   problem.AddParameterBlock(para_ba, 3);
   problem.AddParameterBlock(para_bg, 3);
 
-  for(int i = 0; i < v_list_size; i++) {
+  for(size_t i = 0; i < v_list_size; i++) {
     problem.AddParameterBlock(para_v_list[i], 3);
   }
   
@@ -214,34 +222,33 @@ bool ImuAligner::solve_ceres_problem(const std::deque<LidarFrame>& frames,
   problem.AddResidualBlock(Cost_Initialization_Prior_R::Create(prior_r, sqrt_information_r), nullptr, para_r);
   problem.AddResidualBlock(Cost_Initialization_Prior_bv::Create(prior_ba, sqrt_information_ba), nullptr, para_ba);
   problem.AddResidualBlock(Cost_Initialization_Prior_bv::Create(prior_bg, sqrt_information_bg), nullptr, para_bg);
-  for(int i = 0; i < v_list_size; i++) {
+  for(size_t i = 0; i < v_list_size; i++) {
     problem.AddResidualBlock(Cost_Initialization_Prior_bv::Create(prior_v_list[i], sqrt_information_v), nullptr, para_v_list[i]);
   }
 
-  for(int i = 1; i < v_list_size; i++) {
-    auto iter = frames.begin();
-    auto iter_next = frames.begin();
-    std::advance(iter, i-1);
-    std::advance(iter_next, i);
-
+  for(size_t i = 1; i < v_list_size; i++) {
+    //auto iter = frames.begin();
+    //auto iter_next = frames.begin();
+    //std::advance(iter, i-1);
+    //std::advance(iter_next, i);
     //Eigen::Vector3d pi = iter->P + iter->Q*exPlb;
     //Sophus::SO3d SO3_Ri(iter->Q*exRlb);
-    Eigen::Vector3d pi = iter->P + iter->Q * ex_t_bl;
-    Sophus::SO3d SO3_Ri(iter->Q * ex_r_lb);
-    Eigen::Vector3d ri = SO3_Ri.log();
     //Eigen::Vector3d pj = iter_next->P + iter_next->Q*exPlb;
     //Sophus::SO3d SO3_Rj(iter_next->Q*exRlb);
-    Eigen::Vector3d pj = iter_next->P + iter_next->Q * ex_t_bl;
-    Sophus::SO3d SO3_Rj(iter_next->Q * ex_r_lb);
+    Eigen::Vector3d pi = frames[i-1].P + frames[i-1].Q * ex_t_bl;
+    Sophus::SO3d SO3_Ri(frames[i-1].Q * ex_r_lb);
+    Eigen::Vector3d ri = SO3_Ri.log();
+    Eigen::Vector3d pj = frames[i].P + frames[i].Q * ex_t_bl;
+    Sophus::SO3d SO3_Rj(frames[i].Q * ex_r_lb);
     Eigen::Vector3d rj = SO3_Rj.log();
 
-    problem.AddResidualBlock(Cost_Initialization_IMU::Create(iter_next->imuIntegrator,
-                                                                   ri,
-                                                                   rj,
-                                                                   pj-pi,
-                                                                   Eigen::LLT<Eigen::Matrix<double, 9, 9>>
-                                                                    (iter_next->imuIntegrator.GetCovariance().block<9,9>(0,0).inverse())
-                                                                    .matrixL().transpose()),
+    problem.AddResidualBlock(Cost_Initialization_IMU::Create(frames[i].imuIntegrator,
+                             ri,
+                             rj,
+                             pj-pi,
+                             Eigen::LLT<Eigen::Matrix<double, 9, 9>>
+                             (frames[i].imuIntegrator.GetCovariance().block<9,9>(0,0).inverse())
+                             .matrixL().transpose()),
                              nullptr,
                              para_r,
                              para_v_list[i-1],
@@ -266,7 +273,7 @@ bool ImuAligner::solve_ceres_problem(const std::deque<LidarFrame>& frames,
   opt_result_.ra = Sophus::SO3d::exp(Eigen::Vector3d(para_r[0], para_r[1], para_r[2])) * Eigen::Vector3d(0, 0, -kGravity);
   opt_result_.ba = Eigen::Vector3d(para_ba[0], para_ba[1], para_ba[2]);
   opt_result_.bg = Eigen::Vector3d(para_bg[0], para_bg[1], para_bg[2]);
-  for (int i = 0; i < v_list_size; i++) {
+  for (size_t i = 0; i < v_list_size; i++) {
     opt_result_.v_list[i] = Eigen::Vector3d(para_v_list[i][0], para_v_list[i][1], para_v_list[i][2]);
   }
   
