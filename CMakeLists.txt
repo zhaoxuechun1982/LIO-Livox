@@ -60,7 +60,7 @@ target_link_libraries(ScanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Op
 add_executable (PoseEstimation 
 		src/app/node_pose_estimation.cpp
 		src/lio/Estimator.cpp
-		src/lio/IMUIntegrator.cpp
+		src/lio/imu_integrator.cpp
 		src/lio/ceres_utils.cpp 
 		src/lio/Map_Manager.cpp)
 target_link_libraries(PoseEstimation ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
