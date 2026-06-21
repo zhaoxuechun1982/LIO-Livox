@@ -1,4 +1,4 @@
-#include "lio/imu_aligner.h"
+#include "lio/imu_aligner.hpp"
 #include "utils/ceres_utils.hpp"
 #include "sophus/so3.hpp"
 #include <ros/ros.h>

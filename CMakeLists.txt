@@ -32,12 +32,12 @@ find_package(OpenCV REQUIRED)
 find_package(SuiteSparse REQUIRED)
 
 include_directories(include
-        	    ${catkin_INCLUDE_DIRS}
+        	${catkin_INCLUDE_DIRS}
 		    ${EIGEN3_INCLUDE_DIR}
 		    ${PCL_INCLUDE_DIRS}
-        	    ${CERES_INCLUDE_DIRS}
+        	${CERES_INCLUDE_DIRS}
 		    ${OpenCV_INCLUDE_DIRS}
-        	    ${SUITESPARSE_INCLUDE_DIRS})
+        	${SUITESPARSE_INCLUDE_DIRS})
 
 ##################
 ## ROS messages ##

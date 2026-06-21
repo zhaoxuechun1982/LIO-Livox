@@ -4,7 +4,7 @@
 #include <deque>
 #include <vector>
 #include <Eigen/Core>
-#include "lidar_frame.h"
+#include <Eigen/Geometry>
 
 namespace lio 
 {
