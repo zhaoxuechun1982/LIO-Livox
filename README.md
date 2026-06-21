@@ -61,7 +61,7 @@ Simultaneously, an extra thread builds and maintains the global map in parallel.
 *  [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page)
 *  [Ceres Solver](http://ceres-solver.org/installation.html)
 *  [PCL](http://www.pointclouds.org/downloads/linux.html)
-*  [livox_ros_driver](https://github.com/Livox-SDK/livox_ros_driver)
+*  [livox_ros_driver2](https://github.com/Livox-SDK/livox_ros_driver2)
 *  Suitesparse
    ```
    sudo apt-get install libsuitesparse-dev
@@ -89,11 +89,11 @@ rosbag play YOUR_ROSBAG.bag
 ```
 
 ## Run with your device:
-### Run your LiDAR with livox_ros_driver
+### Run your LiDAR with livox_ros_driver2
 ```
 cd ~/catkin_ws
 source devel/setup.bash
-roslaunch livox_ros_driver livox_lidar_msg.launch
+roslaunch livox_ros_driver2 livox_lidar_msg.launch
 ```
 
 ### Run the launch file:
@@ -107,7 +107,7 @@ roslaunch lio_livox horizon.launch
 The current version of the system is only adopted for Livox Horizon and Livox HAP. In theory, it should be able to run directly with a Livox Avia, but we haven't done enough tests.
 Besides, the system doesn't provide a interface of Livox mid series. If you want use mid-40 or mid-70, you can try [livox_mapping](https://github.com/Livox-SDK/livox_mapping).
 
-The topic of point cloud messages is /livox/lidar and its type is livox_ros_driver/CustomMsg. \
+The topic of point cloud messages is /livox/lidar and its type is livox_ros_driver2/CustomMsg. \
 The topic of IMU messages is /livox/imu and its type is sensor_msgs/Imu.
 
 There are some parameters in launch files:

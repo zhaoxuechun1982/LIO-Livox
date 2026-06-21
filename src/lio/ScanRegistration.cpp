@@ -17,7 +17,7 @@ int N_SCANS = 6;
 bool Feature_Mode = false;
 bool Use_seg = false;
 
-void lidarCallBackHorizon(const livox_ros_driver::CustomMsgConstPtr &msg) {
+void lidarCallBackHorizon(const livox_ros_driver2::CustomMsgConstPtr &msg) {
 
   sensor_msgs::PointCloud2 msg2;
 
@@ -36,7 +36,7 @@ void lidarCallBackHorizon(const livox_ros_driver::CustomMsgConstPtr &msg) {
 
 }
 
-void lidarCallBackHAP(const livox_ros_driver::CustomMsgConstPtr &msg) {
+void lidarCallBackHAP(const livox_ros_driver2::CustomMsgConstPtr &msg) {
 
   sensor_msgs::PointCloud2 msg2;
 
@@ -130,15 +130,15 @@ int main(int argc, char** argv)
 
   if (Lidar_Type == 0)
   {
-    customCloud = nodeHandler.subscribe<livox_ros_driver::CustomMsg>("/livox/lidar", 100, &lidarCallBackHorizon);
+    customCloud = nodeHandler.subscribe<livox_ros_driver2::CustomMsg>("/livox/lidar", 100, &lidarCallBackHorizon);
   }
   else if (Lidar_Type == 1)
   {
-    customCloud = nodeHandler.subscribe<livox_ros_driver::CustomMsg>("/livox/lidar", 100, &lidarCallBackHAP);
+    customCloud = nodeHandler.subscribe<livox_ros_driver2::CustomMsg>("/livox/lidar", 100, &lidarCallBackHAP);
   }
   else if(Lidar_Type==2){
       if (msg_type==0)
-          customCloud = nodeHandler.subscribe<livox_ros_driver::CustomMsg>("/livox/lidar", 100, &lidarCallBackHorizon);
+          customCloud = nodeHandler.subscribe<livox_ros_driver2::CustomMsg>("/livox/lidar", 100, &lidarCallBackHorizon);
       else if(msg_type==1)
           pc2Cloud=nodeHandler.subscribe<sensor_msgs::PointCloud2>("/livox/lidar", 100, &lidarCallBackPc2);
   }

@@ -1,7 +1,7 @@
 #ifndef LIO_LIVOX_LIDARFEATUREEXTRACTOR_H
 #define LIO_LIVOX_LIDARFEATUREEXTRACTOR_H
 #include <ros/ros.h>
-#include <livox_ros_driver/CustomMsg.h>
+#include <livox_ros_driver2/CustomMsg.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -57,7 +57,7 @@ public:
     void detectFeaturePoint3(pcl::PointCloud<PointType>::Ptr& cloud,
                              std::vector<int>& pointsLessSharp);
                 
-    void FeatureExtract_with_segment(const livox_ros_driver::CustomMsgConstPtr &msg,
+    void FeatureExtract_with_segment(const livox_ros_driver2::CustomMsgConstPtr &msg,
                                      pcl::PointCloud<PointType>::Ptr& laserCloud,
                                      pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                                      pcl::PointCloud<PointType>::Ptr& laserSurfFeature,
@@ -65,7 +65,7 @@ public:
                                      sensor_msgs::PointCloud2 &msg2,
                                      int Used_Line = 1);
 
-    void FeatureExtract_with_segment_hap(const livox_ros_driver::CustomMsgConstPtr &msg,
+    void FeatureExtract_with_segment_hap(const livox_ros_driver2::CustomMsgConstPtr &msg,
                                      	 pcl::PointCloud<PointType>::Ptr& laserCloud,
                                      	 pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                                      	 pcl::PointCloud<PointType>::Ptr& laserSurfFeature,
@@ -79,13 +79,13 @@ public:
       * \param[in] laserConerFeature: less Coner features extracted from laserCloud
       * \param[in] laserSurfFeature: less Surf features extracted from laserCloud
       */
-    void FeatureExtract(const livox_ros_driver::CustomMsgConstPtr &msg,
+    void FeatureExtract(const livox_ros_driver2::CustomMsgConstPtr &msg,
                         pcl::PointCloud<PointType>::Ptr& laserCloud,
                         pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                         pcl::PointCloud<PointType>::Ptr& laserSurfFeature,
                         int Used_Line = 1,const int lidar_type=0);
 
-    void FeatureExtract_hap(const livox_ros_driver::CustomMsgConstPtr &msg,
+    void FeatureExtract_hap(const livox_ros_driver2::CustomMsgConstPtr &msg,
                             pcl::PointCloud<PointType>::Ptr& laserCloud,
                             pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                             pcl::PointCloud<PointType>::Ptr& laserSurfFeature,

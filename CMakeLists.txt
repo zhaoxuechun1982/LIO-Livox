@@ -18,7 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   	     tf
   	     tf_conversions
   	     rosbag
-  	     livox_ros_driver
+  	     livox_ros_driver2
   	     eigen_conversions
   	     pcl_conversions
   	     pcl_ros

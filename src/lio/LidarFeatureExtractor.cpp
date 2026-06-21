@@ -586,7 +586,7 @@ void LidarFeatureExtractor::detectFeaturePoint(pcl::PointCloud<PointType>::Ptr& 
 
 }
 
-void LidarFeatureExtractor::FeatureExtract_with_segment(const livox_ros_driver::CustomMsgConstPtr &msg,
+void LidarFeatureExtractor::FeatureExtract_with_segment(const livox_ros_driver2::CustomMsgConstPtr &msg,
                                                         pcl::PointCloud<PointType>::Ptr& laserCloud,
                                                         pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                                                         pcl::PointCloud<PointType>::Ptr& laserSurfFeature,
@@ -700,7 +700,7 @@ void LidarFeatureExtractor::FeatureExtract_with_segment(const livox_ros_driver::
 
 }
 
-void LidarFeatureExtractor::FeatureExtract_with_segment_hap(const livox_ros_driver::CustomMsgConstPtr &msg,
+void LidarFeatureExtractor::FeatureExtract_with_segment_hap(const livox_ros_driver2::CustomMsgConstPtr &msg,
                                                             pcl::PointCloud<PointType>::Ptr& laserCloud,
                                                             pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                                                             pcl::PointCloud<PointType>::Ptr& laserSurfFeature,
@@ -1183,7 +1183,7 @@ void LidarFeatureExtractor::detectFeaturePoint3(pcl::PointCloud<PointType>::Ptr&
 }
 
 
-void LidarFeatureExtractor::FeatureExtract(const livox_ros_driver::CustomMsgConstPtr &msg,
+void LidarFeatureExtractor::FeatureExtract(const livox_ros_driver2::CustomMsgConstPtr &msg,
                                            pcl::PointCloud<PointType>::Ptr& laserCloud,
                                            pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                                            pcl::PointCloud<PointType>::Ptr& laserSurfFeature,
@@ -1257,7 +1257,7 @@ void LidarFeatureExtractor::FeatureExtract(const livox_ros_driver::CustomMsgCons
   }
 }
 
-void LidarFeatureExtractor::FeatureExtract_hap(const livox_ros_driver::CustomMsgConstPtr &msg,
+void LidarFeatureExtractor::FeatureExtract_hap(const livox_ros_driver2::CustomMsgConstPtr &msg,
                                                pcl::PointCloud<PointType>::Ptr& laserCloud,
                                                pcl::PointCloud<PointType>::Ptr& laserConerFeature,
                                                pcl::PointCloud<PointType>::Ptr& laserSurfFeature,
