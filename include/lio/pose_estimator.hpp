@@ -1,51 +1,38 @@
 #ifndef LIO_LIVOX_ESTIMATOR_H
 #define LIO_LIVOX_ESTIMATOR_H
 
+#include "type/lidar_frame.hpp"
+#include "utils/ceres_utils.hpp"
+#include "lio/imu_aligner.hpp"
+#include "lio/imu_integrator.hpp"
+#include "lio/map_manager.hpp"
+
 #include <ros/ros.h>
-#include <pcl_conversions/pcl_conversions.h>
+#include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
+#include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
-#include <nav_msgs/Odometry.h>
-#include <nav_msgs/Path.h>
 #include <tf/tf.h>
 #include <tf/transform_broadcaster.h>
+
 #include <Eigen/Core>
-#include <sensor_msgs/Imu.h>
+#include <pcl_conversions/pcl_conversions.h>
+
 #include <queue>
 #include <iterator>
 #include <future>
-#include "MapManager/Map_Manager.h"
-#include "utils/ceres_utils.hpp"
-#include "IMUIntegrator/IMUIntegrator.h"
 #include <chrono>
 
-class Estimator{
-	typedef pcl::PointXYZINormal PointType;
+namespace lio
+{
+class Estimator {
+
 public:
 	/** \brief slide window size */
 	static const int SLIDEWINDOWSIZE = 2;
-
-	/** \brief lidar frame struct */
-	struct LidarFrame{
-		pcl::PointCloud<PointType>::Ptr laserCloud;
-		IMUIntegrator imuIntegrator;
-		Eigen::Vector3d P;
-		Eigen::Vector3d V;
-		Eigen::Quaterniond Q;
-		Eigen::Vector3d bg;
-		Eigen::Vector3d ba;
-		double timeStamp;
-		LidarFrame(){
-			P.setZero();
-			V.setZero();
-			Q.setIdentity();
-			bg.setZero();
-			ba.setZero();
-			timeStamp = 0;
-		}
-	};
 
 	/** \brief point to line feature */
 	struct FeatureLine{
@@ -136,7 +123,6 @@ public:
 	/** \brief constructor of Estimator
 	*/
 	Estimator(const float& filter_corner, const float& filter_surf);
-
 	~Estimator();
 
 		/** \brief Open a independent thread to increment MAP cloud
@@ -221,9 +207,16 @@ public:
 						   const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureStack,
 						   const Eigen::Matrix4d& transformTobeMapped);
 
+    bool run_imu_align(std::deque<LidarFrame>& frames,
+                       Eigen::Vector3d& g_b,
+                       const Eigen::Matrix3d& ex_r_lb, 
+                       const Eigen::Vector3d& ex_t_bl,
+                       const size_t& win_size);
+
 private:
 	/** \brief store map points */
 	MAP_MANAGER* map_manager;
+	ImuAligner* imu_aligner_ptr_
 
 	double para_PR[SLIDEWINDOWSIZE][6];
 	double para_VBias[SLIDEWINDOWSIZE][9];
@@ -276,5 +269,6 @@ private:
 	double plan_weight_tan = 0.0;
 	double thres_dist = 1.0;
 };
+} // end of namespace
 
-#endif //LIO_LIVOX_ESTIMATOR_H
+#endif // LIO_LIVOX_ESTIMATOR_HPP

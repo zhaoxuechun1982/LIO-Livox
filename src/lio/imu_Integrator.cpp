@@ -1,6 +1,7 @@
-#include "IMUIntegrator/IMUIntegrator.h"
+#include "lio/imu_integrator.hpp"
 
-IMUIntegrator::IMUIntegrator(){
+IMUIntegrator::IMUIntegrator()
+{
   Reset();
   noise.setZero();
   noise.block<3, 3>(0, 0) =  Eigen::Matrix3d::Identity() * gyr_n * gyr_n;
@@ -143,7 +144,7 @@ void IMUIntegrator::PreIntegration(double lastTime, const Eigen::Vector3d& bg, c
   }
 }
 
-Eigen::Vector3d IMUIntegrator::GetAverageAcc(void)
+Eigen::Vector3d IMUIntegrator::GetAverageAcc(void) const
 {
   int frame_count = 0;
   Eigen::Vector3d sum_acc(0, 0, 0);

@@ -41,6 +41,7 @@ Estimator::Estimator(const float& filter_corner, const float& filter_surf){
   downSizeFilterNonFeature.setLeafSize(0.4, 0.4, 0.4);
   map_manager = new MAP_MANAGER(filter_corner, filter_surf);
   threadMap = std::thread(&Estimator::threadMapIncrement, this);
+  imu_aligner_ptr_ = lio::ImuAligner::instance_pointer();
 }
 
 Estimator::~Estimator(){
@@ -1373,4 +1374,12 @@ void Estimator::MapIncrementLocal(const pcl::PointCloud<PointType>::Ptr& laserCl
   downSizeFilterNonFeature.filter(*temp3);
   laserCloudNonFeatureFromLocal = temp3;
   localMapID ++;
+}
+
+bool Estimator::run_imu_align(std::deque<LidarFrame>& frames,
+                              Eigen::Vector3d& g_b,
+                              const Eigen::Matrix3d& ex_r_lb, 
+                              const Eigen::Vector3d& ex_t_bl)
+{
+  return imu_aligner_ptr_->instance().run_align(frames,g_b, ex_r_lb, ex_t_bl, SLIDEWINDOWSIZE);
 }

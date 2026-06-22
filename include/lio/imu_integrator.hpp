@@ -1,5 +1,5 @@
-#ifndef LIO_LIVOX_IMUINTEGRATOR_H
-#define LIO_LIVOX_IMUINTEGRATOR_H
+#ifndef LIO_IMU_INTEGRATOR_HPP
+#define LIO_IMU_INTEGRATOR_HPP
 
 #include <sensor_msgs/Imu.h>
 #include <queue>
@@ -54,7 +54,7 @@ public:
 
     /** \brief get average acceleration of IMU messages for initialization
      */
-    Eigen::Vector3d GetAverageAcc(void);
+    Eigen::Vector3d GetAverageAcc(void) const;
 
     const std::vector<sensor_msgs::ImuConstPtr> & GetIMUMsg() const;
 

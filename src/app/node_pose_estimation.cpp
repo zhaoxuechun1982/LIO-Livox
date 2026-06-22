@@ -1,5 +1,6 @@
 #include "Estimator/Estimator.h"
 
+
 typedef pcl::PointXYZINormal PointType;
 
 int WINDOWSIZE;
@@ -29,7 +30,7 @@ std::queue<sensor_msgs::ImuConstPtr> _imuMsgQueue;
 Eigen::Matrix4d exTlb;
 Eigen::Matrix3d exRlb, exRbl;
 Eigen::Vector3d exPlb, exPbl;
-Eigen::Vector3d GravityVector;
+Eigen::Vector3d g_gravity_vector;
 float filter_parameter_corner = 0.2;
 float filter_parameter_surf = 0.4;
 int IMU_Mode = 2;
@@ -164,6 +165,7 @@ bool fetch_imu_msgs(double startTime, double endTime, std::vector<sensor_msgs::I
       }
     }
   }
+
   return !vimuMsg.empty();
 }
 
@@ -241,13 +243,15 @@ bool TryMAPInitialization(void)
   Eigen::Vector3d prior_ba = Eigen::Vector3d::Zero();
   Eigen::Vector3d prior_bg = Eigen::Vector3d::Zero();
   std::vector<Eigen::Vector3d> prior_v;
+  
+  /*************************************************** */
+  Sophus::SO3d SO3_R_wg(q_wg.toRotationMatrix());
+  prior_r = SO3_R_wg.log();
+  /*************************************************** */
   int v_size = g_lidar_frame_list->size();
   for(int i = 0; i < v_size; i++) {
     prior_v.push_back(Eigen::Vector3d::Zero());
   }
-  Sophus::SO3d SO3_R_wg(q_wg.toRotationMatrix());
-  prior_r = SO3_R_wg.log();
-  
   for (int i = 1; i < v_size; i++){
     auto iter = g_lidar_frame_list->begin();
     auto iter_next = g_lidar_frame_list->begin();
@@ -258,7 +262,7 @@ bool TryMAPInitialization(void)
     prior_v[i] = velo_imu;
   }
   prior_v[0] = prior_v[1];
-
+  /*************************************************** */
   double para_v[v_size][3];
   double para_r[3];
   double para_ba[3];
@@ -344,7 +348,7 @@ bool TryMAPInitialization(void)
   ceres::Solve(options, &problem, &summary);
 
   Eigen::Vector3d r_wg(para_r[0], para_r[1], para_r[2]);
-  GravityVector = Sophus::SO3d::exp(r_wg) * Eigen::Vector3d(0, 0, -9.805);
+  g_gravity_vector = Sophus::SO3d::exp(r_wg) * Eigen::Vector3d(0, 0, -9.805);
 
   Eigen::Vector3d ba_vec(para_ba[0], para_ba[1], para_ba[2]);
   Eigen::Vector3d bg_vec(para_bg[0], para_bg[1], para_bg[2]);
@@ -367,8 +371,8 @@ bool TryMAPInitialization(void)
     }
     iter->V = bv_vec;
   }
-
-  for(size_t i = 0; i < v_size - 1; i++){
+/**************************************************************************/
+  for(size_t i = 0; i < v_size - 1; i++) {
     auto laser_trans_i = g_lidar_frame_list->begin();
     auto laser_trans_j = g_lidar_frame_list->begin();
     std::advance(laser_trans_i, i);
@@ -379,7 +383,7 @@ bool TryMAPInitialization(void)
 
   // //if IMU success initialized
   WINDOWSIZE = Estimator::SLIDEWINDOWSIZE;
-  while(g_lidar_frame_list->size() > WINDOWSIZE){
+  while(g_lidar_frame_list->size() > WINDOWSIZE) {
 	  g_lidar_frame_list->pop_front();
   }
 	Eigen::Vector3d Pwl = g_lidar_frame_list->back().P;
@@ -500,8 +504,8 @@ void process(void)
 
           // Predict current body world rotation, position, velocity via pre-integration result
 			    lidarFrame.Q = Qwbpre * dQ;
-			    lidarFrame.P = Pwbpre + Vwbpre*dt + 0.5*GravityVector*dt*dt + Qwbpre*(dP);
-			    lidarFrame.V = Vwbpre + GravityVector*dt + Qwbpre*(dV);
+			    lidarFrame.P = Pwbpre + Vwbpre*dt + 0.5*g_gravity_vector*dt*dt + Qwbpre*(dP);
+			    lidarFrame.V = Vwbpre + g_gravity_vector*dt + Qwbpre*(dV);
 
           // Inherit IMU bias from last frame (bias stays constant within one window)
 			    lidarFrame.bg = g_lidar_frame_list->back().bg;
@@ -555,7 +559,7 @@ void process(void)
 	    remove_lidar_distortion(laserCloudFullRes, delta_Rl, delta_tl);
 
       // Optimize current lidar pose with IMU
-      g_estimator_ptr->EstimateLidarPose(*lidar_list, exTlb, GravityVector, debugInfo);
+      g_estimator_ptr->EstimateLidarPose(*lidar_list, exTlb, g_gravity_vector, debugInfo);
 
       // Pointer buffer for corner and surface feature map points
       pcl::PointCloud<PointType>::Ptr laserCloudCornerMap(new pcl::PointCloud<PointType>());
@@ -665,6 +669,13 @@ void process(void)
             && g_lidar_frame_list->front().timeStamp >= startTime) {
             std::cout<<"**************Start MAP Initialization!!!******************"<<std::endl;
 				    // Execute multi-frame joint initialization to solve gravity, IMU bias, initial pose
+            //if (g_estimator_ptr->run_imu_align(g_lidar_frame_list, g_gravity_vector, exRlb, exPlb))
+            //{
+            //  g_gravity_vector = temp_g;
+            //  g_lidar_imu_initialized_flag = true;
+            //  g_push_count = 0;
+            //  startTime = 0;              
+            //}
             if(TryMAPInitialization()) {
               g_lidar_imu_initialized_flag = true;
 					    g_push_count = 0;
