@@ -19,9 +19,10 @@
 #include "MapManager/Map_Manager.h"
 #include "utils/ceres_utils.hpp"
 #include "IMUIntegrator/IMUIntegrator.h"
+#include "lio/imu_aligner.hpp"
 #include <chrono>
 
-class Estimator{
+class Estimator {
 	typedef pcl::PointXYZINormal PointType;
 public:
 	/** \brief slide window size */
@@ -221,9 +222,16 @@ public:
 						   const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureStack,
 						   const Eigen::Matrix4d& transformTobeMapped);
 
+    bool run_imu_align(std::deque<LidarFrame>& frames,
+                       Eigen::Vector3d& g_b,
+                       const Eigen::Matrix3d& ex_r_lb, 
+                       const Eigen::Vector3d& ex_t_bl,
+                       const size_t& win_size);
+
 private:
 	/** \brief store map points */
 	MAP_MANAGER* map_manager;
+	ImuAligner* imu_aligner_ptr_
 
 	double para_PR[SLIDEWINDOWSIZE][6];
 	double para_VBias[SLIDEWINDOWSIZE][9];

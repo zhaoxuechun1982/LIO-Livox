@@ -1,6 +1,7 @@
-#include "IMUIntegrator/IMUIntegrator.h"
+#include "lio/imu_integrator.hpp"
 
-IMUIntegrator::IMUIntegrator(){
+IMUIntegrator::IMUIntegrator()
+{
   Reset();
   noise.setZero();
   noise.block<3, 3>(0, 0) =  Eigen::Matrix3d::Identity() * gyr_n * gyr_n;

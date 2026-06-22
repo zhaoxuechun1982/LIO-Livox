@@ -1,12 +1,13 @@
 #ifndef LIO_LIVOX_CERESFUNC_H
 #define LIO_LIVOX_CERESFUNC_H
+
 #include <ceres/ceres.h>
 #include <glog/logging.h>
 #include <utility>
 #include <pthread.h>
 #include <unordered_map>
 #include "sophus/so3.hpp"
-#include "IMUIntegrator/IMUIntegrator.h"
+#include "lio/imu_integrator.hpp"
 
 const int NUM_THREADS = 4;
 
