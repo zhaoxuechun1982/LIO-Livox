@@ -1,7 +1,8 @@
-#ifndef LIO_LIVOX_ESTIMATOR_H
-#define LIO_LIVOX_ESTIMATOR_H
+#ifndef LIO_POSE_ESTIMATOR_HPP
+#define LIO_POSE_ESTIMATOR_HPP
 
 #include "type/lidar_frame.hpp"
+#include "type/lidar_feature.hpp"
 #include "utils/ceres_utils.hpp"
 #include "lio/imu_aligner.hpp"
 #include "lio/imu_integrator.hpp"
@@ -28,111 +29,16 @@
 
 namespace lio
 {
-class Estimator {
+class PoseEstimator 
+{
+public:
+	static constexpr unsigned int silde_windows_size = 2;
 
 public:
-	/** \brief slide window size */
-	static const int SLIDEWINDOWSIZE = 2;
+	PoseEstimator(const float& filter_corner, const float& filter_surface);
+	~PoseEstimator();
 
-	/** \brief point to line feature */
-	struct FeatureLine{
-		Eigen::Vector3d pointOri;
-		Eigen::Vector3d lineP1;
-		Eigen::Vector3d lineP2;
-		double error;
-		bool valid;
-		FeatureLine(Eigen::Vector3d  po, Eigen::Vector3d  p1, Eigen::Vector3d  p2)
-						:pointOri(std::move(po)), lineP1(std::move(p1)), lineP2(std::move(p2)){
-			valid = false;
-			error = 0;
-		}
-		double ComputeError(const Eigen::Matrix4d& pose){
-			Eigen::Vector3d P_to_Map = pose.topLeftCorner(3,3) * pointOri + pose.topRightCorner(3,1);
-			double l12 = std::sqrt((lineP1(0) - lineP2(0))*(lineP1(0) - lineP2(0)) + (lineP1(1) - lineP2(1))*
-																						(lineP1(1) - lineP2(1)) + (lineP1(2) - lineP2(2))*(lineP1(2) - lineP2(2)));
-			double a012 = std::sqrt(
-							((P_to_Map(0) - lineP1(0)) * (P_to_Map(1) - lineP2(1)) - (P_to_Map(0) - lineP2(0)) * (P_to_Map(1) - lineP1(1)))
-							* ((P_to_Map(0) - lineP1(0)) * (P_to_Map(1) - lineP2(1)) - (P_to_Map(0) - lineP2(0)) * (P_to_Map(1) - lineP1(1)))
-							+ ((P_to_Map(0) - lineP1(0)) * (P_to_Map(2) - lineP2(2)) - (P_to_Map(0) - lineP2(0)) * (P_to_Map(2) - lineP1(2)))
-								* ((P_to_Map(0) - lineP1(0)) * (P_to_Map(2) - lineP2(2)) - (P_to_Map(0) - lineP2(0)) * (P_to_Map(2) - lineP1(2)))
-							+ ((P_to_Map(1) - lineP1(1)) * (P_to_Map(2) - lineP2(2)) - (P_to_Map(1) - lineP2(1)) * (P_to_Map(2) - lineP1(2)))
-								* ((P_to_Map(1) - lineP1(1)) * (P_to_Map(2) - lineP2(2)) - (P_to_Map(1) - lineP2(1)) * (P_to_Map(2) - lineP1(2))));
-			error = a012 / l12;
-		}
-	};
-
-	/** \brief point to plan feature */
-	struct FeaturePlan{
-		Eigen::Vector3d pointOri;
-		double pa;
-		double pb;
-		double pc;
-		double pd;
-		double error;
-		bool valid;
-		FeaturePlan(const Eigen::Vector3d& po, const double& pa_, const double& pb_, const double& pc_, const double& pd_)
-						:pointOri(po), pa(pa_), pb(pb_), pc(pc_), pd(pd_){
-			valid = false;
-			error = 0;
-		}
-		double ComputeError(const Eigen::Matrix4d& pose){
-			Eigen::Vector3d P_to_Map = pose.topLeftCorner(3,3) * pointOri + pose.topRightCorner(3,1);
-			error = pa * P_to_Map(0) + pb * P_to_Map(1) + pc * P_to_Map(2) + pd;
-		}
-	};
-
-	/** \brief point to plan feature */
-	struct FeaturePlanVec{
-		Eigen::Vector3d pointOri;
-		Eigen::Vector3d pointProj;
-		Eigen::Matrix3d sqrt_info;
-		double error;
-		bool valid;
-		FeaturePlanVec(const Eigen::Vector3d& po, const Eigen::Vector3d& p_proj, Eigen::Matrix3d sqrt_info_)
-						:pointOri(po), pointProj(p_proj), sqrt_info(sqrt_info_) {
-			valid = false;
-			error = 0;
-		}
-		double ComputeError(const Eigen::Matrix4d& pose){
-			Eigen::Vector3d P_to_Map = pose.topLeftCorner(3,3) * pointOri + pose.topRightCorner(3,1);
-			error = (P_to_Map - pointProj).norm();
-		}
-	};
-
-	/** \brief non feature */
-	struct FeatureNon{
-		Eigen::Vector3d pointOri;
-		double pa;
-		double pb;
-		double pc;
-		double pd;
-		double error;
-		bool valid;
-		FeatureNon(const Eigen::Vector3d& po, const double& pa_, const double& pb_, const double& pc_, const double& pd_)
-						:pointOri(po), pa(pa_), pb(pb_), pc(pc_), pd(pd_){
-			valid = false;
-			error = 0;
-		}
-		double ComputeError(const Eigen::Matrix4d& pose){
-			Eigen::Vector3d P_to_Map = pose.topLeftCorner(3,3) * pointOri + pose.topRightCorner(3,1);
-			error = pa * P_to_Map(0) + pb * P_to_Map(1) + pc * P_to_Map(2) + pd;
-		}
-	};
-
-public:
-	/** \brief constructor of Estimator
-	*/
-	Estimator(const float& filter_corner, const float& filter_surf);
-	~Estimator();
-
-		/** \brief Open a independent thread to increment MAP cloud
-		*/
 	[[noreturn]] void threadMapIncrement();
-
-	/** \brief construct sharp feature Ceres Costfunctions
-	* \param[in] edges: store costfunctions
-	* \param[in] m4d: lidar pose, represented by matrix 4X4
-	*/
 	void processPointToLine(std::vector<ceres::CostFunction *>& edges,
 							std::vector<FeatureLine>& vLineFeatures,
 							const pcl::PointCloud<PointType>::Ptr& laserCloudCorner,
@@ -141,10 +47,6 @@ public:
 							const Eigen::Matrix4d& exTlb,
 							const Eigen::Matrix4d& m4d);
 
-	/** \brief construct Plan feature Ceres Costfunctions
-	* \param[in] edges: store costfunctions
-	* \param[in] m4d: lidar pose, represented by matrix 4X4
-	*/
 	void processPointToPlan(std::vector<ceres::CostFunction *>& edges,
 							std::vector<FeaturePlan>& vPlanFeatures,
 							const pcl::PointCloud<PointType>::Ptr& laserCloudSurf,
@@ -169,26 +71,12 @@ public:
 							  const Eigen::Matrix4d& exTlb,
 							  const Eigen::Matrix4d& m4d);
 
-	/** \brief Transform Lidar Pose in slidewindow to double array
-		* \param[in] lidarFrameList: Lidar Poses in slidewindow
-		*/
 	void vector2double(const std::list<LidarFrame>& lidarFrameList);
-
-	/** \brief Transform double array to Lidar Pose in slidewindow
-		* \param[in] lidarFrameList: Lidar Poses in slidewindow
-		*/
 	void double2vector(std::list<LidarFrame>& lidarFrameList);
-
-	/** \brief estimate lidar pose by matching current lidar cloud with map cloud and tightly coupled IMU message
-		* \param[in] lidarFrameList: multi-frames of lidar cloud and lidar pose
-		* \param[in] exTlb: extrinsic matrix between lidar and IMU
-		* \param[in] gravity: gravity vector
-		*/
 	void EstimateLidarPose(std::list<LidarFrame>& lidarFrameList,
 						   const Eigen::Matrix4d& exTlb,
 						   const Eigen::Vector3d& gravity,
 						   nav_msgs::Odometry& debugInfo);
-
 	void Estimate(std::list<LidarFrame>& lidarFrameList,
 				  const Eigen::Matrix4d& exTlb,
 				  const Eigen::Vector3d& gravity);
@@ -218,8 +106,8 @@ private:
 	MAP_MANAGER* map_manager;
 	ImuAligner* imu_aligner_ptr_
 
-	double para_PR[SLIDEWINDOWSIZE][6];
-	double para_VBias[SLIDEWINDOWSIZE][9];
+	double para_PR[silde_windows_size][6];
+	double para_VBias[silde_windows_size][9];
 	MarginalizationInfo *last_marginalization_info = nullptr;
 	std::vector<double *> last_marginalization_parameter_blocks;
 	std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudCornerLast;
@@ -271,4 +159,4 @@ private:
 };
 } // end of namespace
 
-#endif // LIO_LIVOX_ESTIMATOR_HPP
+#endif // LIO_POSE_ESTIMATOR_HPP

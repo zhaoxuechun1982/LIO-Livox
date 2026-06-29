@@ -1,4 +1,4 @@
-#include "Estimator/Estimator.h"
+#include "lio/pose_estimator.hpp"
 
 
 typedef pcl::PointXYZINormal PointType;
@@ -382,7 +382,7 @@ bool TryMAPInitialization(void)
 
 
   // //if IMU success initialized
-  WINDOWSIZE = Estimator::SLIDEWINDOWSIZE;
+  WINDOWSIZE = Estimator::silde_windows_size;
   while(g_lidar_frame_list->size() > WINDOWSIZE) {
 	  g_lidar_frame_list->pop_front();
   }

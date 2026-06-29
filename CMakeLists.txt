@@ -58,11 +58,12 @@ add_executable (ScanRegistration
 target_link_libraries(ScanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
 
 add_executable (PoseEstimation 
-		src/app/node_pose_estimation.cpp
-		src/lio/Estimator.cpp
-		src/lio/imu_integrator.cpp
-		src/lio/ceres_utils.cpp 
-		src/lio/Map_Manager.cpp)
+  src/app/node_pose_estimation.cpp
+  src/lio/pose_estimator.cpp
+  src/lio/imu_aligner.cpp
+  src/lio/imu_integrator.cpp  
+  src/lio/map_manager.cpp
+  src/lio/ceres_utils.cpp)
 target_link_libraries(PoseEstimation ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
 
