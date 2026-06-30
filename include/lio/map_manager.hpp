@@ -1,23 +1,26 @@
-#ifndef LIO_LIVOX_MAP_MANAGER_H
-#define LIO_LIVOX_MAP_MANAGER_H
+#ifndef LIO_MAP_MANAGER_H
+#define LIO_MAP_MANAGER_H
+
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <future>
-class MAP_MANAGER{
+class MapManager
+{
     typedef pcl::PointXYZINormal PointType;
 public:
 
     std::mutex mtx_MapManager;
-    /** \brief constructor of MAP_MANAGER */
-    MAP_MANAGER(const float& filter_corner, const float& filter_surf);
+    /** \brief constructor of MapManager */
+    MapManager(const float& filter_corner, const float& filter_surf);
 
     static size_t ToIndex(int i, int j, int k);
 
     /** \brief transform float to int
   */
-    static uint32_t _float_as_int(float f){
+    static uint32_t _float_as_int(float f)
+    {
       union{uint32_t i; float f;} conv{};
       conv.f = f;
       return conv.i;
@@ -25,7 +28,8 @@ public:
 
     /** \brief transform int to float
       */
-    static float _int_as_float(uint32_t i){
+    static float _int_as_float(uint32_t i)
+    {
       union{float f; uint32_t i;} conv{};
       conv.i = i;
       return conv.f;
@@ -36,11 +40,11 @@ public:
      * \param[in] po: point after transfomation
      * \param[in] _transformTobeMapped: transform matrix between pi and po
      */
-    static void pointAssociateToMap(PointType const * const pi,
+    static void point_associate_to_map(PointType const * const pi,
                                     PointType * const po,
                                     const Eigen::Matrix4d& _transformTobeMapped);
 
-    void featureAssociateToMap(const pcl::PointCloud<PointType>::Ptr& laserCloudCorner,
+    void feature_associate_to_map(const pcl::PointCloud<PointType>::Ptr& laserCloudCorner,
                                const pcl::PointCloud<PointType>::Ptr& laserCloudSurf,
                                const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeature,
                                const pcl::PointCloud<PointType>::Ptr& laserCloudCornerToMap,
@@ -52,7 +56,7 @@ public:
      * \param[in] laserCloudSurfStack: surf feature points that need to be added to map
      * \param[in] transformTobeMapped: transform matrix of the lidar pose
      */
-    void MapIncrement(const pcl::PointCloud<PointType>::Ptr& laserCloudCornerStack,
+    void map_increment_update(const pcl::PointCloud<PointType>::Ptr& laserCloudCornerStack,
                       const pcl::PointCloud<PointType>::Ptr& laserCloudSurfStack,
                       const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureStack,
                       const Eigen::Matrix4d& transformTobeMapped);
@@ -151,9 +155,8 @@ private:
     pcl::PointCloud<PointType>::Ptr localNonFeatureMap[localMapWindowSize];
 
     int localMapID = 0;
-
     int currentUpdatePos = 0;
     int estimatorPos = 0;
 };
 
-#endif //LIO_LIVOX_MAP_MANAGER_H
+#endif //LIO_MAP_MANAGER_H

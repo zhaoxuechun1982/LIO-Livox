@@ -1,10 +1,16 @@
-#ifndef LIO_TYPE_LIDAR_FEATURE_HPP
-#define LIO_TYPE_LIDAR_FEATURE_HPP
+#ifndef LIO_LIDAR_FEATURE_TYPE_HPP
+#define LIO_LIDAR_FEATURE_TYPE_HPP
 
+#include <vector>
 #include <Eigen/Core>
 
 namespace lio_data_type
 {
+  using FeatureLineVector = std::vector<FeatureLine>;
+  using FeaturePlaneVector = std::vector<FeaturePlane>;
+  using FeaturePlaneVectorVector = std::vector<FeaturePlaneVector>;
+  using FeatureNoneVector = std::vector<FeatureNone>;
+
   struct FeatureLine 
   {
   	Eigen::Vector3d point_origin;
@@ -97,7 +103,8 @@ namespace lio_data_type
   	}
   };
 
-  struct FeatureNone {
+  struct FeatureNone 
+  {
   	Eigen::Vector3d point_origin;
   	double param_a;
   	double param_b;
@@ -128,4 +135,4 @@ namespace lio_data_type
   };
 } // end of namespace lio_data_type
 
-#endif // end of LIO_TYPE_LIDAR_FEATURE_HPP
+#endif // end of LIO_LIDAR_FEATURE_TYPE_HPP

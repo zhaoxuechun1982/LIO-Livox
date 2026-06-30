@@ -382,7 +382,7 @@ bool TryMAPInitialization(void)
 
 
   // //if IMU success initialized
-  WINDOWSIZE = Estimator::silde_windows_size;
+  WINDOWSIZE = Estimator::kSlideWindowsSize;
   while(g_lidar_frame_list->size() > WINDOWSIZE) {
 	  g_lidar_frame_list->pop_front();
   }
@@ -603,7 +603,7 @@ void process(void)
       for (int i = 0; i < laserCloudFullResNum; i++) {
         PointType temp_point;
         // Apply T_WL transform: lidar coordinate point -> world coordinate point
-        MAP_MANAGER::pointAssociateToMap(&lidar_list->front().laserCloud->points[i], &temp_point, transformTobeMapped);
+        MAP_MANAGER::point_associate_to_map(&lidar_list->front().laserCloud->points[i], &temp_point, transformTobeMapped);
         laserCloudAfterEstimate->push_back(temp_point);
       }
 

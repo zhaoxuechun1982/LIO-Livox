@@ -1,15 +1,16 @@
-#ifndef LIO_TYPE_LIDAR_FRAME_HPP
-#define LIO_TYPE_LIDAR_FRAME_HPP
+#ifndef LIO_LIDAR_FRAME_TYPE_HPP
+#define LIO_LIDAR_FRAME_TYPE_HPP
 
-#include "type/type_point_cloud.hpp"
+#include "type/point_cloud_type.hpp"
 #include "lio/imu_integrator.hpp"
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <vector>
+#include <list>
+#include <deque>
 
 namespace lio_data_type
 {
-  /** @brief lidar frame struct 
-   */
   struct LidarFrame
   {
 	PointCloudTypePtr laser_cloud;
@@ -29,6 +30,11 @@ namespace lio_data_type
 	  ba(Eigen::Vector3d::Zero())
     {}
   };
+
+  using LidarFrameVector = std::vector<LidarFrame>;
+  using LidarFrameList = std::list<LidarFrame>;
+  using LidarFrameDeque = std::deque<LidarFrame>;
+
 } // end of namespace lio_data_type
 
-#endif // end of LIO_TYPE_LIDAR_FRAME_HPP
+#endif // end of LIO_LIDAR_FRAME_TYPE_HPP

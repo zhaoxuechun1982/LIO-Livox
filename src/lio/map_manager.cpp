@@ -1,7 +1,8 @@
-#include "MapManager/Map_Manager.h"
+#include "lio/map_manager.hpp"
 #include <fstream>
 
-MAP_MANAGER::MAP_MANAGER(const float& filter_corner, const float& filter_surf){
+MapManager::MapManager(const float& filter_corner, const float& filter_surf) 
+{
   for (int i = 0; i < laserCloudNum; i++) {
     laserCloudCornerArray[i].reset(new pcl::PointCloud<PointType>());
     laserCloudSurfArray[i].reset(new pcl::PointCloud<PointType>());
@@ -27,7 +28,7 @@ MAP_MANAGER::MAP_MANAGER(const float& filter_corner, const float& filter_surf){
   downSizeFilterNonFeature.setLeafSize(0.4, 0.4, 0.4);
 }
 
-size_t MAP_MANAGER::ToIndex(int i, int j, int k)  {
+size_t MapManager::ToIndex(int i, int j, int k)  {
   return i + laserCloudDepth * j + laserCloudDepth * laserCloudWidth * k;
 }
 
@@ -36,7 +37,7 @@ size_t MAP_MANAGER::ToIndex(int i, int j, int k)  {
  * \param[in] po: point after transfomation
  * \param[in] _transformTobeMapped: transform matrix between pi and po
  */
-void MAP_MANAGER::pointAssociateToMap(PointType const * const pi,
+void MapManager::point_associate_to_map(PointType const * const pi,
                                       PointType * const po,
                                       const Eigen::Matrix4d& _transformTobeMapped){
         Eigen::Vector3d pin, pout;
@@ -50,7 +51,7 @@ void MAP_MANAGER::pointAssociateToMap(PointType const * const pi,
         po->intensity = pi->intensity;
         po->normal_z = pi->normal_z;
       }
-void MAP_MANAGER::featureAssociateToMap(const pcl::PointCloud<PointType>::Ptr& laserCloudCorner,
+void MapManager::feature_associate_to_map(const pcl::PointCloud<PointType>::Ptr& laserCloudCorner,
                                         const pcl::PointCloud<PointType>::Ptr& laserCloudSurf,
                                         const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeature,
                                         const pcl::PointCloud<PointType>::Ptr& laserCloudCornerToMap,
@@ -63,15 +64,15 @@ void MAP_MANAGER::featureAssociateToMap(const pcl::PointCloud<PointType>::Ptr& l
   int laserCloudNonFeatureNum = laserCloudNonFeature->points.size();
   PointType pointSel1,pointSel2,pointSel3;
   for (int i = 0; i < laserCloudCornerNum; i++) {
-    pointAssociateToMap(&laserCloudCorner->points[i], &pointSel1, transformTobeMapped);
+    point_associate_to_map(&laserCloudCorner->points[i], &pointSel1, transformTobeMapped);
     laserCloudCornerToMap->push_back(pointSel1);
   }
   for (int i = 0; i < laserCloudSurfNum; i++) {
-    pointAssociateToMap(&laserCloudSurf->points[i], &pointSel2, transformTobeMapped);
+    point_associate_to_map(&laserCloudSurf->points[i], &pointSel2, transformTobeMapped);
     laserCloudSurfToMap->push_back(pointSel2);
   }
   for (int i = 0; i < laserCloudNonFeatureNum; i++) {
-    pointAssociateToMap(&laserCloudNonFeature->points[i], &pointSel3, transformTobeMapped);
+    point_associate_to_map(&laserCloudNonFeature->points[i], &pointSel3, transformTobeMapped);
     laserCloudNonFeatureToMap->push_back(pointSel3);
   }
   
@@ -81,7 +82,7 @@ void MAP_MANAGER::featureAssociateToMap(const pcl::PointCloud<PointType>::Ptr& l
  * \param[in] laserCloudSurfStack: surf feature points that need to be added to map
  * \param[in] transformTobeMapped: transform matrix of the lidar pose
  */
-void MAP_MANAGER::MapIncrement(const pcl::PointCloud<PointType>::Ptr& laserCloudCornerStack,
+void MapManager::map_increment_update(const pcl::PointCloud<PointType>::Ptr& laserCloudCornerStack,
                                const pcl::PointCloud<PointType>::Ptr& laserCloudSurfStack,
                                const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureStack,
                                const Eigen::Matrix4d& transformTobeMapped){
@@ -243,7 +244,7 @@ void MAP_MANAGER::MapIncrement(const pcl::PointCloud<PointType>::Ptr& laserCloud
 /** \brief move the map index if need
  * \param[in] transformTobeMapped: transform matrix of the lidar pose
  */
-void MAP_MANAGER::MapMove(const Eigen::Matrix4d& transformTobeMapped){
+void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
   const Eigen::Matrix3d transformTobeMapped_R = transformTobeMapped.topLeftCorner(3, 3);
   const Eigen::Vector3d transformTobeMapped_t = transformTobeMapped.topRightCorner(3, 1);
 
@@ -252,7 +253,7 @@ void MAP_MANAGER::MapMove(const Eigen::Matrix4d& transformTobeMapped){
   pointOnYAxis.y = 0.0;
   pointOnYAxis.z = 10.0;
 
-  pointAssociateToMap(&pointOnYAxis, &pointOnYAxis, transformTobeMapped);
+  point_associate_to_map(&pointOnYAxis, &pointOnYAxis, transformTobeMapped);
 
   int centerCubeI = int((transformTobeMapped_t.x() + 25.0) / 50.0) + laserCloudCenDepth;
   int centerCubeJ = int((transformTobeMapped_t.y() + 25.0) / 50.0) + laserCloudCenWidth;
@@ -538,7 +539,7 @@ void MAP_MANAGER::MapMove(const Eigen::Matrix4d& transformTobeMapped){
 
 }
 
-size_t MAP_MANAGER::FindUsedCornerMap(const PointType *p,int a,int b, int c)
+size_t MapManager::FindUsedCornerMap(const PointType *p,int a,int b, int c)
 {
     int cubeI = int((p->x + 25.0) / 50.0) + c;
     int cubeJ = int((p->y + 25.0) / 50.0) + a;
@@ -561,7 +562,7 @@ size_t MAP_MANAGER::FindUsedCornerMap(const PointType *p,int a,int b, int c)
 
     return cubeInd;  
 }
-size_t MAP_MANAGER::FindUsedSurfMap(const PointType *p,int a,int b, int c)
+size_t MapManager::FindUsedSurfMap(const PointType *p,int a,int b, int c)
 {
     int cubeI = int((p->x + 25.0) / 50.0) + c;
     int cubeJ = int((p->y + 25.0) / 50.0) + a;
@@ -585,7 +586,7 @@ size_t MAP_MANAGER::FindUsedSurfMap(const PointType *p,int a,int b, int c)
     return cubeInd;
 }
 
-size_t MAP_MANAGER::FindUsedNonFeatureMap(const PointType *p,int a,int b, int c)
+size_t MapManager::FindUsedNonFeatureMap(const PointType *p,int a,int b, int c)
 {
     int cubeI = int((p->x + 25.0) / 50.0) + c;
     int cubeJ = int((p->y + 25.0) / 50.0) + a;

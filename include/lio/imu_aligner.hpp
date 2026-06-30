@@ -10,11 +10,14 @@
 #ifndef LIO_IMU_ALIGNER_HPP
 #define LIO_IMU_ALIGNER_HPP
 
+#include "type/lidar_frame_type.hpp"
+
 #include <deque>
 #include <vector>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
-#include "type/lidar_frame.hpp"
+
+using namespace lio_data_type;
 
 namespace lio 
 {

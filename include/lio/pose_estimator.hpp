@@ -1,11 +1,13 @@
 #ifndef LIO_POSE_ESTIMATOR_HPP
 #define LIO_POSE_ESTIMATOR_HPP
 
-#include "type/lidar_frame.hpp"
-#include "type/lidar_feature.hpp"
+#include "type/point_cloud_type.hpp"
+#include "type/lidar_frame_type.hpp"
+#include "type/lidar_feature_type.hpp"
 #include "utils/ceres_utils.hpp"
 #include "lio/imu_aligner.hpp"
 #include "lio/imu_integrator.hpp"
+#include "lio/lidar_feature_matcher.hpp"
 #include "lio/map_manager.hpp"
 
 #include <ros/ros.h>
@@ -27,111 +29,93 @@
 #include <future>
 #include <chrono>
 
+using namespace lio_data_type;
 namespace lio
 {
 class PoseEstimator 
 {
 public:
-	static constexpr unsigned int silde_windows_size = 2;
+	static constexpr unsigned int kSlideWindowsSize = 2;
 
 public:
-	PoseEstimator(const float& filter_corner, const float& filter_surface);
-	~PoseEstimator();
+  PoseEstimator(const float& filter_corner, const float& filter_surface);
+  ~PoseEstimator();
 
-	[[noreturn]] void threadMapIncrement();
-	void processPointToLine(std::vector<ceres::CostFunction *>& edges,
-							std::vector<FeatureLine>& vLineFeatures,
-							const pcl::PointCloud<PointType>::Ptr& laserCloudCorner,
-							const pcl::PointCloud<PointType>::Ptr& laserCloudCornerMap,
-							const pcl::KdTreeFLANN<PointType>::Ptr& kdtree,
-							const Eigen::Matrix4d& exTlb,
-							const Eigen::Matrix4d& m4d);
+  void EstimateLidarPose(LidarFrameList& lidarFrameList,
+						             const Eigen::Matrix4d& exTlb,
+						             const Eigen::Vector3d& gravity,
+						             nav_msgs::Odometry& debugInfo);
 
-	void processPointToPlan(std::vector<ceres::CostFunction *>& edges,
-							std::vector<FeaturePlan>& vPlanFeatures,
-							const pcl::PointCloud<PointType>::Ptr& laserCloudSurf,
-							const pcl::PointCloud<PointType>::Ptr& laserCloudSurfMap,
-							const pcl::KdTreeFLANN<PointType>::Ptr& kdtree,
-							const Eigen::Matrix4d& exTlb,
-							const Eigen::Matrix4d& m4d);
+  void Estimate(LidarFrameList& lidarFrameList,
+				        const Eigen::Matrix4d& exTlb,
+				        const Eigen::Vector3d& gravity);
 
-	void processPointToPlanVec(std::vector<ceres::CostFunction *>& edges,
-							   std::vector<FeaturePlanVec>& vPlanFeatures,
-							   const pcl::PointCloud<PointType>::Ptr& laserCloudSurf,
-							   const pcl::PointCloud<PointType>::Ptr& laserCloudSurfMap,
-							   const pcl::KdTreeFLANN<PointType>::Ptr& kdtree,
-							   const Eigen::Matrix4d& exTlb,
-							   const Eigen::Matrix4d& m4d);
-				
-	void processNonFeatureICP(std::vector<ceres::CostFunction *>& edges,
-							  std::vector<FeatureNon>& vNonFeatures,
-							  const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeature,
-							  const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureLocal,
-							  const pcl::KdTreeFLANN<PointType>::Ptr& kdtreeLocal,
-							  const Eigen::Matrix4d& exTlb,
-							  const Eigen::Matrix4d& m4d);
+  bool run_imu_align(LidarFrameDeque& frames,
+                     Eigen::Vector3d& g_b,
+                     const Eigen::Matrix3d& ex_r_lb, 
+                     const Eigen::Vector3d& ex_t_bl);
 
-	void vector2double(const std::list<LidarFrame>& lidarFrameList);
-	void double2vector(std::list<LidarFrame>& lidarFrameList);
-	void EstimateLidarPose(std::list<LidarFrame>& lidarFrameList,
-						   const Eigen::Matrix4d& exTlb,
-						   const Eigen::Vector3d& gravity,
-						   nav_msgs::Odometry& debugInfo);
-	void Estimate(std::list<LidarFrame>& lidarFrameList,
-				  const Eigen::Matrix4d& exTlb,
-				  const Eigen::Vector3d& gravity);
-
-	pcl::PointCloud<PointType>::Ptr get_corner_map(){
-		return map_manager->get_corner_map();
+  inline PointCloudTypePtr get_corner_map()
+  {
+		return map_manager_ptr_->get_corner_map();
 	}
-	pcl::PointCloud<PointType>::Ptr get_surf_map(){
-		return map_manager->get_surf_map();
+	
+  inline PointCloudTypePtr get_surf_map()
+  {
+		return map_manager_ptr_->get_surf_map();
 	}
-	pcl::PointCloud<PointType>::Ptr get_nonfeature_map(){
-		return map_manager->get_nonfeature_map();
-	}
-	void MapIncrementLocal(const pcl::PointCloud<PointType>::Ptr& laserCloudCornerStack,
-						   const pcl::PointCloud<PointType>::Ptr& laserCloudSurfStack,
-						   const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureStack,
-						   const Eigen::Matrix4d& transformTobeMapped);
 
-    bool run_imu_align(std::deque<LidarFrame>& frames,
-                       Eigen::Vector3d& g_b,
-                       const Eigen::Matrix3d& ex_r_lb, 
-                       const Eigen::Vector3d& ex_t_bl,
-                       const size_t& win_size);
+	inline PointCloudTypePtr get_nonfeature_map()
+  {
+		return map_manager_ptr_->get_nonfeature_map();
+	}
 
 private:
-	/** \brief store map points */
-	MAP_MANAGER* map_manager;
-	ImuAligner* imu_aligner_ptr_
+  void thread_map_increment_update();
+  void convert_vector_to_double(const LidarFrameList& lidar_frame_list);
+  void convert_double_to_vector(LidarFrameList& lidar_frame_list);
+	void update_local_map_increment(const PointCloudTypePtr& laserCloudCornerStack,
+						   const PointCloudTypePtr& laserCloudSurfStack,
+						   const PointCloudTypePtr& laserCloudNonFeatureStack,
+						   const Eigen::Matrix4d& transformTobeMapped);
 
-	double para_PR[silde_windows_size][6];
-	double para_VBias[silde_windows_size][9];
+  MapManager* map_manager_ptr_;
+  ImuAligner* imu_aligner_ptr_;
+  LidarFeatureMatcher* lidar_feature_matcher_ptr_;
+
+  std::mutex map_mutex_;         // map operation mutex
+  bool miu_thread_running_flag_; // map increment update thread running flag 
+  std::thread miu_thread_;       // map increment update thread
+  
+  PointCloudTypePtr pcf_corner_for_map_ptr_;
+  PointCloudTypePtr pcf_surface_for_map_ptr_;
+  PointCloudTypePtr pcf_none_for_map_ptr_;
+  Eigen::Matrix4d transform_for_map_;
+  unsigned int map_update_id_ = 0;
+
+	double param_p_r_[kSlideWindowsSize][6];
+	double param_v_bias_[kSlideWindowsSize][9];
+
 	MarginalizationInfo *last_marginalization_info = nullptr;
 	std::vector<double *> last_marginalization_parameter_blocks;
-	std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudCornerLast;
-	std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudSurfLast;
-	std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudNonFeatureLast;
+	std::vector<PointCloudTypePtr> laserCloudCornerLast;
+	std::vector<PointCloudTypePtr> laserCloudSurfLast;
+	std::vector<PointCloudTypePtr> laserCloudNonFeatureLast;
 
-	pcl::PointCloud<PointType>::Ptr laserCloudCornerFromLocal;
-	pcl::PointCloud<PointType>::Ptr laserCloudSurfFromLocal;
-	pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureFromLocal;
-	pcl::PointCloud<PointType>::Ptr laserCloudCornerForMap;
-	pcl::PointCloud<PointType>::Ptr laserCloudSurfForMap;
-	pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureForMap;
-	Eigen::Matrix4d transformForMap;
-	std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudCornerStack;
-	std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudSurfStack;
-	std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudNonFeatureStack;
+	std::vector<PointCloudTypePtr> laserCloudCornerStack;
+	std::vector<PointCloudTypePtr> laserCloudSurfStack;
+	std::vector<PointCloudTypePtr> laserCloudNonFeatureStack;
 	pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromLocal;
 	pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromLocal;
 	pcl::KdTreeFLANN<PointType>::Ptr kdtreeNonFeatureFromLocal;
-	pcl::VoxelGrid<PointType> downSizeFilterCorner;
-	pcl::VoxelGrid<PointType> downSizeFilterSurf;
-	pcl::VoxelGrid<PointType> downSizeFilterNonFeature;
-	std::mutex mtx_Map;
-	std::thread threadMap;
+
+  PointCloudTypePtr pcf_corner_from_local_;
+	PointCloudTypePtr pcf_surface_from_local_;
+	PointCloudTypePtr pcf_none_from_local_;
+  
+	pcl::VoxelGrid<PointType> down_size_filter_corner_;
+	pcl::VoxelGrid<PointType> down_size_filter_surface_;
+	pcl::VoxelGrid<PointType> down_size_filter_none_;
 
 	pcl::KdTreeFLANN<PointType> CornerKdMap[10000];
 	pcl::KdTreeFLANN<PointType> SurfKdMap[10000];
@@ -145,18 +129,17 @@ private:
 	int laserCenHeight_last = 5;
 	int laserCenDepth_last = 10;
 
-	static const int localMapWindowSize = 50;
-	int localMapID = 0;
-	pcl::PointCloud<PointType>::Ptr localCornerMap[localMapWindowSize];
-	pcl::PointCloud<PointType>::Ptr localSurfMap[localMapWindowSize];
-	pcl::PointCloud<PointType>::Ptr localNonFeatureMap[localMapWindowSize];
+	static constexpr size_t kLocalMapWindowSize = 50;
+	size_t local_map_id_ = 0;
+	PointCloudTypePtr local_corner_map_[kLocalMapWindowSize];
+	PointCloudTypePtr local_surface_map_[kLocalMapWindowSize];
+	PointCloudTypePtr local_none_map_[kLocalMapWindowSize];
 
-	int map_update_ID = 0;
-
-	int map_skip_frame = 2; //every map_skip_frame frame update map
+	static constexpr unsigned int kMapSkipFrameCount = 2;
 	double plan_weight_tan = 0.0;
 	double thres_dist = 1.0;
 };
-} // end of namespace
+
+} // end of namespace lio
 
 #endif // LIO_POSE_ESTIMATOR_HPP
