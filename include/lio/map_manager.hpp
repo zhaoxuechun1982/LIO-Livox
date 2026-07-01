@@ -75,13 +75,13 @@ public:
 
     size_t FindUsedNonFeatureMap(const PointType *p,int a,int b,int c);
 
-    pcl::KdTreeFLANN<PointType> getCornerKdMap(int i){
+    pcl::KdTreeFLANN<PointType> get_kdtree_corner_map(int i){
       return CornerKdMap_last[i];
     }
-    pcl::KdTreeFLANN<PointType> getSurfKdMap(int i){
+    pcl::KdTreeFLANN<PointType> get_kdtree_surface_map(int i){
       return SurfKdMap_last[i];
     }
-    pcl::KdTreeFLANN<PointType> getNonFeatureKdMap(int i){
+    pcl::KdTreeFLANN<PointType> get_kdtree_none_map(int i){
       return NonFeatureKdMap_last[i];
     }
 		pcl::PointCloud<PointType>::Ptr get_corner_map(){

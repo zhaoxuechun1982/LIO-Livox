@@ -12,6 +12,7 @@ namespace lio_data_type
   using PointCloudTypePtr = PointCloudType::Ptr;
   using PointKdTreeType = pcl::KdTreeFLANN<PointType>;
   using PointKdTreeTypePtr= PointKdTreeType::Ptr;
+  using PointVoxelGridType = pcl::VoxelGrid<PointType>;
 } // end of namespace lio_data_type 
 
 #endif // end of LIO_POINT_CLOUD_TYPE_HPP

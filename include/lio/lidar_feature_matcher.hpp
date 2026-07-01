@@ -4,65 +4,64 @@
 #include "type/ceres_type.hpp"
 #include "type/point_cloud_type.hpp"
 #include "type/lidar_feature_type.hpp"
-//#include "lio/estimator_data.hpp"
 #include <Eigen/Eigen>
 #include <vector>
 
 using namespace lio_data_type;
 namespace lio
 {
+class PoseEstimator; 
+
 class LidarFeatureMatcher
 {
+
 public:
-  static LidarFeatureMatcher& instance(void);
-  static LidarFeatureMatcher* instance_pointer(void);
-  static void destroy_instance(void);
+  // static LidarFeatureMatcher& instance(void);
+  // static LidarFeatureMatcher* instance_pointer(void);
+  // static void destroy_instance(void);
+  explicit LidarFeatureMatcher(PoseEstimator* host) : host_(host) {}
+  ~LidarFeatureMatcher() = default;
 
   void match_point_to_line(CeresCostFunctionPtrVector& edges,
                            FeatureLineVector& line_features,
                            const PointCloudTypePtr& corner_cloud,
-                           const PointCloudTypePtr& local_corner_map,
-                           const PointKdTreeTypePtr& local_kdtree,
-                           const Eigen::Matrix4d& T_lb,
-                           const Eigen::Matrix4d& pose_map,
-                           const EstimatorData& data);
+                           const PointCloudTypePtr& cloud_corner_local,
+                           const PointKdTreeTypePtr& kdtree_local,
+                           const Eigen::Matrix4d& exTlb,
+                           const Eigen::Matrix4d& m4d);
 
-    void match_point_to_plane(CeresCostFunctionPtrVector& edges,
-                              FeaturePlaneVector& plane_features,
-                              const PointCloudTypePtr& surf_cloud,
-                              const PointCloudTypePtr& local_surf_map,
-                              const PointKdTreeTypePtr& local_kdtree,
-                              const Eigen::Matrix4d& T_lb,
-                              const Eigen::Matrix4d& pose_map,
-                              const EstimatorData& data);
+  void match_point_to_plane(CeresCostFunctionPtrVector& edges,
+                            FeaturePlaneVector& plane_features,
+                            const PointCloudTypePtr& cloud_surface,
+                            const PointCloudTypePtr& cloud_surface_local,
+                            const PointKdTreeTypePtr& kdtree_local,
+                            const Eigen::Matrix4d& exTlb,
+                            const Eigen::Matrix4d& m4d);
 
-    void match_point_to_plane_vector(CeresCostFunctionPtrVector& edges,
-                                     FeaturePlaneVectorVector& plane_vec_features,
-                                     const PointCloudTypePtr& surf_cloud,
-                                     const PointCloudTypePtr& local_surf_map,
-                                     const PointKdTreeTypePtr& local_kdtree,
-                                     const Eigen::Matrix4d& T_lb,
-                                     const Eigen::Matrix4d& pose_map,
-                                     const EstimatorData& data);
+  void match_point_to_plane_vector(CeresCostFunctionPtrVector& edges,
+                                   FeaturePlaneVectorVector& plane_vector_features,
+                                   const PointCloudTypePtr& cloud_surface,
+                                   const PointCloudTypePtr& cloud_surface_local,
+                                   const PointKdTreeTypePtr& kdtree_local,
+                                   const Eigen::Matrix4d& exTlb,
+                                   const Eigen::Matrix4d& m4d);
 
-    void match_non_feature_plane(CeresCostFunctionPtrVector& edges,
-                                  FeatureNoneVector& non_features,
-                                  const PointCloudTypePtr& non_cloud,
-                                  const PointCloudTypePtr& local_non_map,
-                                  const PointKdTreeTypePtr& local_kdtree,
-                                  const Eigen::Matrix4d& T_lb,
-                                  const Eigen::Matrix4d& pose_map,
-                                  const EstimatorData& data);
+  void match_none_feature_icp(CeresCostFunctionPtrVector& edges,
+                              FeatureNoneVector& none_features,
+                              const PointCloudTypePtr& cloud_none,
+                              const PointCloudTypePtr& cloud_none_local,
+                              const PointKdTreeTypePtr& kdtree_local,
+                              const Eigen::Matrix4d& exTlb,
+                              const Eigen::Matrix4d& m4d);
 
 private:
-  LidarFeatureMatcher() = default; 
-  ~LidarFeatureMatcher() = default;
+  //LidarFeatureMatcher() = default; 
   LidarFeatureMatcher(const LidarFeatureMatcher&) = delete;
   LidarFeatureMatcher& operator=(const LidarFeatureMatcher&) = delete;
 
-  static LidarFeatureMatcher* instance_ptr_;
+  //static LidarFeatureMatcher* instance_ptr_;
+  PoseEstimator* host_ = nullptr;
 };
-
 } // end of namespace lio
 
 #endif // end of LIO_LIDAR_FEATURE_MATCHER_HPP

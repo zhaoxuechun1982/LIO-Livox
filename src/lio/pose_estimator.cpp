@@ -2,11 +2,13 @@
 
 namespace lio
 {
-  PoseEstimator::PoseEstimator(const float& filter_corner, const float& filter_surface)
+  PoseEstimator::PoseEstimator(const float& filter_corner, const float& filter_surface) :
+    lidar_feature_matcher_(this)
   {
     pcf_corner_from_local_.reset(new PointCloudType);
     pcf_surface_from_local_.reset(new PointCloudType);
     pcf_none_from_local_.reset(new PointCloudType);
+
     laserCloudCornerLast.resize(kSlideWindowsSize);
     for(auto& p:laserCloudCornerLast)
       p.reset(new PointCloudType);
@@ -16,38 +18,44 @@ namespace lio
     laserCloudNonFeatureLast.resize(kSlideWindowsSize);
     for(auto& p:laserCloudNonFeatureLast)
       p.reset(new PointCloudType);
-    pcf_corner_ptr.resize(kSlideWindowsSize);
-    for(auto& p:pcf_corner_ptr)
+
+    pcf_corner_stack_.resize(kSlideWindowsSize);
+    for(auto& p:pcf_corner_stack_) {
       p.reset(new PointCloudType);
-    pcf_surface_ptr.resize(kSlideWindowsSize);
-    for(auto& p:pcf_surface_ptr)
+    }
+    pcf_surface_stack_.resize(kSlideWindowsSize);
+    for(auto& p:pcf_surface_stack_) {
       p.reset(new PointCloudType);
-    pcf_none_ptr.resize(kSlideWindowsSize);
-    for(auto& p:pcf_none_ptr)
+    }
+    pcf_none_stack_.resize(kSlideWindowsSize);
+    for(auto& p:pcf_none_stack_) {
       p.reset(new PointCloudType);
+    }
+    
     pcf_corner_for_map_ptr_.reset(new PointCloudType);
     pcf_surface_for_map_ptr_.reset(new PointCloudType);
     pcf_none_for_map_ptr_.reset(new PointCloudType);
     transform_for_map_.setIdentity();
-    kdtreeCornerFromLocal.reset(new pcl::KdTreeFLANN<PointType>);
-    kdtreeSurfFromLocal.reset(new pcl::KdTreeFLANN<PointType>);
-    kdtreeNonFeatureFromLocal.reset(new pcl::KdTreeFLANN<PointType>);
+
+    kdtree_corner_from_local_ptr_.reset(new PointKdTreeType);
+    kdtree_surface_from_local_ptr_.reset(new PointKdTreeType);
+    kdtree_none_from_local_ptr_.reset(new PointKdTreeType);
   
-    for(int i = 0; i < kLocalMapWindowSize; i++){
-      localCornerMap[i].reset(new PointCloudType);
-      localSurfMap[i].reset(new PointCloudType);
-      localNonFeatureMap[i].reset(new PointCloudType);
+    for(size_t i = 0; i < kLocalMapWindowSize; i++) {
+      local_corner_map_[i].reset(new PointCloudType);
+      local_surface_map_[i].reset(new PointCloudType);
+      local_none_map_[i].reset(new PointCloudType);
     }
   
-    down_size_filter_corner_.setLeafSize(filter_corner, filter_corner, filter_corner);
-    downSizeFilterSurf.setLeafSize(filter_surface, filter_surface, filter_surface);
-    down_size_filter_none_.setLeafSize(0.4, 0.4, 0.4);
+    down_size_corner_filter_.setLeafSize(filter_corner, filter_corner, filter_corner);
+    down_size_surface_filter_.setLeafSize(filter_surface, filter_surface, filter_surface);
+    down_size_none_filter_.setLeafSize(0.4, 0.4, 0.4);
 
     miu_thread_ = std::thread(&PoseEstimator::thread_map_increment_update, this);
     miu_thread_running_flag_ = true;
     map_manager_ptr_ = new MapManager(filter_corner, filter_surface);
     imu_aligner_ptr_ = ImuAligner::instance_pointer();
-    lidar_feature_matcher_ptr_ = LidarFeatureMatcher::instance_pointer();
+    //lidar_feature_matcher_ptr_ = LidarFeatureMatcher::instance_pointer();
   }
 
   PoseEstimator::~PoseEstimator()
@@ -59,7 +67,7 @@ namespace lio
 
     delete map_manager_ptr_;
     ImuAligner::destroy_instance();
-    LidarFeatureMatcher::destroy_instance();
+    //LidarFeatureMatcher::destroy_instance();
   }
 
   void PoseEstimator::thread_map_increment_update()
@@ -184,20 +192,21 @@ void PoseEstimator::EstimateLidarPose(LidarFrameList& lidar_frame_list,
         laserCloudNonFeatureLast[stack_count]->push_back(p);
     }
 
-    pcf_corner_ptr[stack_count]->clear();
-    down_size_filter_corner_.setInputCloud(laserCloudCornerLast[stack_count]);
-    down_size_filter_corner_.filter(*pcf_corner_ptr[stack_count]);
+    pcf_corner_stack_[stack_count]->clear();
+    down_size_corner_filter_.setInputCloud(laserCloudCornerLast[stack_count]);
+    down_size_corner_filter_.filter(*pcf_corner_stack_[stack_count]);
 
-    pcf_surface_ptr[stack_count]->clear();
-    downSizeFilterSurf.setInputCloud(laserCloudSurfLast[stack_count]);
-    downSizeFilterSurf.filter(*pcf_surface_ptr[stack_count]);
+    pcf_surface_stack_[stack_count]->clear();
+    down_size_surface_filter_.setInputCloud(laserCloudSurfLast[stack_count]);
+    down_size_surface_filter_.filter(*pcf_surface_stack_[stack_count]);
 
-    pcf_none_ptr[stack_count]->clear();
-    down_size_filter_none_.setInputCloud(laserCloudNonFeatureLast[stack_count]);
-    down_size_filter_none_.filter(*pcf_none_ptr[stack_count]);
+    pcf_none_stack_[stack_count]->clear();
+    down_size_none_filter_.setInputCloud(laserCloudNonFeatureLast[stack_count]);
+    down_size_none_filter_.filter(*pcf_none_stack_[stack_count]);
     stack_count++;
   }
-  if ( ((laserCloudCornerFromMapNum >= 0 && laserCloudSurfFromMapNum > 100) || 
+
+  if (((laserCloudCornerFromMapNum >= 0 && laserCloudSurfFromMapNum > 100) || 
        (laserCloudCornerFromLocalNum >= 0 && laserCloudSurfFromLocalNum > 100))) {
     Estimate(lidar_frame_list, exTlb, gravity);
   }
@@ -207,9 +216,9 @@ void PoseEstimator::EstimateLidarPose(LidarFrameList& lidar_frame_list,
   transformTobeMapped.topRightCorner(3,1) = lidar_frame_list.front().q * exPbl + lidar_frame_list.front().p;
 
   std::unique_lock<std::mutex> locker(map_mutex_);
-  *pcf_corner_for_map_ptr_ = *pcf_corner_ptr[0];
-  *pcf_surface_for_map_ptr_ = *pcf_surface_ptr[0];
-  *pcf_none_for_map_ptr_ = *pcf_none_ptr[0];
+  *pcf_corner_for_map_ptr_ = *pcf_corner_stack_[0];
+  *pcf_surface_for_map_ptr_ = *pcf_surface_stack_[0];
+  *pcf_none_for_map_ptr_ = *pcf_none_stack_[0];
   transform_for_map_ = transformTobeMapped;
   pcf_corner_from_local_->clear();
   pcf_surface_from_local_->clear();
@@ -218,37 +227,35 @@ void PoseEstimator::EstimateLidarPose(LidarFrameList& lidar_frame_list,
   locker.unlock();
 }
 
-void PoseEstimator::Estimate(LidarFrameList& lidar_frame_list,
+void PoseEstimator::Estimate(std::list<LidarFrame>& lidarFrameList,
                          const Eigen::Matrix4d& exTlb,
-                         const Eigen::Vector3d& gravity)
-{
+                         const Eigen::Vector3d& gravity){
 
   int num_corner_map = 0;
   int num_surf_map = 0;
 
   static uint32_t frame_count = 0;
-  int windowSize = lidar_frame_list.size();
+  int windowSize = lidarFrameList.size();
   Eigen::Matrix4d transformTobeMapped = Eigen::Matrix4d::Identity();
   Eigen::Matrix3d exRbl = exTlb.topLeftCorner(3,3).transpose();
   Eigen::Vector3d exPbl = -1.0 * exRbl * exTlb.topRightCorner(3,1);
-  kdtreeCornerFromLocal->setInputCloud(pcf_corner_from_local_);
-  kdtreeSurfFromLocal->setInputCloud(pcf_surface_from_local_);
-  kdtreeNonFeatureFromLocal->setInputCloud(pcf_none_from_local_);
+  kdtree_corner_from_local_ptr_->setInputCloud(pcf_corner_from_local_);
+  kdtree_surface_from_local_ptr_->setInputCloud(pcf_surface_from_local_);
+  kdtree_none_from_local_ptr_->setInputCloud(pcf_none_from_local_);
 
   std::unique_lock<std::mutex> locker3(map_manager_ptr_->mtx_MapManager);
-  for(int i = 0; i < 4851; i++){
-    CornerKdMap[i] = map_manager_ptr_->getCornerKdMap(i);
-    SurfKdMap[i] = map_manager_ptr_->getSurfKdMap(i);
-    NonFeatureKdMap[i] = map_manager_ptr_->getNonFeatureKdMap(i);
+  for(size_t i = 0; i < kValidVoxelGridCount; i++) {
+    kdtree_corner_map_[i] = map_manager_ptr_->get_kdtree_corner_map(i);
+    kdtree_surface_map_[i] = map_manager_ptr_->get_kdtree_surface_map(i);
+    kdtree_none_map_[i] = map_manager_ptr_->get_kdtree_none_map(i);
 
-    GlobalSurfMap[i] = map_manager_ptr_->laserCloudSurf_for_match[i];
-    GlobalCornerMap[i] = map_manager_ptr_->laserCloudCorner_for_match[i];
-    GlobalNonFeatureMap[i] = map_manager_ptr_->laserCloudNonFeature_for_match[i];
+    global_corner_map_[i] = map_manager_ptr_->laserCloudCorner_for_match[i];
+    global_surface_map_[i] = map_manager_ptr_->laserCloudSurf_for_match[i];
+    global_none_map_[i] = map_manager_ptr_->laserCloudNonFeature_for_match[i];
   }
-  laserCenWidth_last = map_manager_ptr_->get_laserCloudCenWidth_last();
-  laserCenHeight_last = map_manager_ptr_->get_laserCloudCenHeight_last();
-  laserCenDepth_last = map_manager_ptr_->get_laserCloudCenDepth_last();
-
+  laser_center_width_last_ = map_manager_ptr_->get_laserCloudCenWidth_last();
+  laser_center_height_last_ = map_manager_ptr_->get_laserCloudCenHeight_last();
+  laser_center_depth_last_ = map_manager_ptr_->get_laserCloudCenDepth_last();
   locker3.unlock();
 
   // store point to line features
@@ -279,59 +286,7 @@ void PoseEstimator::Estimate(LidarFrameList& lidar_frame_list,
   // excute optimize process
   const int max_iters = 5;
   for(int iterOpt=0; iterOpt<max_iters; ++iterOpt) {
-
-    convert_vector_to_double(lidar_frame_list);
-
-    //create huber loss function
-    ceres::LossFunction* loss_function = NULL;
-    loss_function = new ceres::HuberLoss(0.1 / IMUIntegrator::lidar_m);
-    if(windowSize == kSlideWindowsSize) {
-      loss_function = NULL;
-    } else {
-      loss_function = new ceres::HuberLoss(0.1 / IMUIntegrator::lidar_m);
-    }
-_   map_manager_ptr_->getNonFeatureKdMap(i);
-
-    GlobalSurfMap[i] = map_manager_ptr_->laserCloudSurf_for_match[i];
-    GlobalCornerMap[i] = map_manager_ptr_->laserCloudCorner_for_match[i];
-    GlobalNonFeatureMap[i] = map_manager_ptr_->laserCloudNonFeature_for_match[i];
-  }
-  laserCenWidth_last = map_manager_ptr_->get_laserCloudCenWidth_last();
-  laserCenHeight_last = map_manager_ptr_->get_laserCloudCenHeight_last();
-  laserCenDepth_last = map_manager_ptr_->get_laserCloudCenDepth_last();
-
-  locker3.unlock();
-
-  // store point to line features
-  std::vector<std::vector<FeatureLine>> vLineFeatures(windowSize);
-  for(auto& v : vLineFeatures){
-    v.reserve(2000);
-  }
-
-  // store point to plan features
-  std::vector<std::vector<FeaturePlaneVector>> vPlanFeatures(windowSize);
-  for(auto& v : vPlanFeatures){
-    v.reserve(2000);
-  }
-
-  std::vector<std::vector<FeatureNone>> vNonFeatures(windowSize);
-  for(auto& v : vNonFeatures){
-    v.reserve(2000);
-  }
-
-  if(windowSize == kSlideWindowsSize) {
-    plan_weight_tan = 0.0003;
-    thres_dist = 1.0;
-  } else {
-    plan_weight_tan = 0.0;
-    thres_dist = 25.0;
-  }
-
-  // excute optimize process
-  const int max_iters = 5;
-  for(int iterOpt=0; iterOpt<max_iters; ++iterOpt){
-
-    convert_vector_to_double(lidar_frame_list);
+    convert_vector_to_double(lidarFrameList);
 
     //create huber loss function
     ceres::LossFunction* loss_function = NULL;
@@ -354,12 +309,13 @@ _   map_manager_ptr_->getNonFeatureKdMap(i);
 
     // add IMU CostFunction
     for(int f=1; f<windowSize; ++f){
-      auto frame_curr = lidar_frame_list.begin();
+      auto frame_curr = lidarFrameList.begin();
       std::advance(frame_curr, f);
       problem.AddResidualBlock(Cost_NavState_PRV_Bias::Create(frame_curr->imu_integrator,
-                              const_cast<Eigen::Vector3d&>(gravity),
-                              Eigen::LLT<Eigen::Matrix<double, 15, 15>>
-                              (frame_curr->imu_integrator.GetCovariance().inverse()).matrixL().transpose()),
+                               const_cast<Eigen::Vector3d&>(gravity),
+                               Eigen::LLT<Eigen::Matrix<double, 15, 15>>
+                               (frame_curr->imu_integrator.GetCovariance().inverse())
+                               .matrixL().transpose()),
                                nullptr,
                                param_p_r_[f-1],
                                param_v_bias_[f-1],
@@ -374,47 +330,46 @@ _   map_manager_ptr_->getNonFeatureKdMap(i);
                                last_marginalization_parameter_blocks);
     }
 
-    Eigen::Quaterniond q_before_opti = lidar_frame_list.back().q;
-    Eigen::Vector3d t_before_opti = lidar_frame_list.back().p;
+    Eigen::Quaterniond q_before_opti = lidarFrameList.back().q;
+    Eigen::Vector3d t_before_opti = lidarFrameList.back().p;
 
     std::vector<std::vector<ceres::CostFunction *>> edgesLine(windowSize);
     std::vector<std::vector<ceres::CostFunction *>> edgesPlan(windowSize);
     std::vector<std::vector<ceres::CostFunction *>> edgesNon(windowSize);
     std::thread threads[3];
     for(int f=0; f<windowSize; ++f) {
-      auto frame_curr = lidar_frame_list.begin();
+      auto frame_curr = lidarFrameList.begin();
       std::advance(frame_curr, f);
       transformTobeMapped = Eigen::Matrix4d::Identity();
       transformTobeMapped.topLeftCorner(3,3) = frame_curr->q * exRbl;
       transformTobeMapped.topRightCorner(3,1) = frame_curr->q * exPbl + frame_curr->p;
 
-      threads[0] = std::thread(&PoseEstimator::processPointToLine, this,
+      threads[0] = std::thread(&LidarFeatureMatcher::match_point_to_line, &lidar_feature_matcher_,
                                std::ref(edgesLine[f]),
                                std::ref(vLineFeatures[f]),
-                               std::ref(pcf_corner_ptr[f]),
+                               std::ref(pcf_corner_stack_[f]),
                                std::ref(pcf_corner_from_local_),
-                               std::ref(kdtreeCornerFromLocal),
+                               std::ref(kdtree_corner_from_local_ptr_),
                                std::ref(exTlb),
                                std::ref(transformTobeMapped));
 
-      threads[1] = std::thread(&PoseEstimator::processPointToPlanVec, this,
+      threads[1] = std::thread(&LidarFeatureMatcher::match_point_to_plane_vector, &lidar_feature_matcher_,
                                std::ref(edgesPlan[f]),
                                std::ref(vPlanFeatures[f]),
-                               std::ref(pcf_surface_ptr[f]),
+                               std::ref(pcf_surface_stack_[f]),
                                std::ref(pcf_surface_from_local_),
-                               std::ref(kdtreeSurfFromLocal),
+                               std::ref(kdtree_surface_from_local_ptr_),
                                std::ref(exTlb),
                                std::ref(transformTobeMapped));
 
-      threads[2] = std::thread(&PoseEstimator::processNonFeatureICP, this,
+      threads[2] = std::thread(&LidarFeatureMatcher::match_none_feature_icp, &lidar_feature_matcher_,
                                std::ref(edgesNon[f]),
                                std::ref(vNonFeatures[f]),
-                               std::ref(pcf_none_ptr[f]),
+                               std::ref(pcf_none_stack_[f]),
                                std::ref(pcf_none_from_local_),
-                               std::ref(kdtreeNonFeatureFromLocal),
+                               std::ref(kdtree_none_from_local_ptr_),
                                std::ref(exTlb),
                                std::ref(transformTobeMapped));
-
       threads[0].join();
       threads[1].join();
       threads[2].join();
@@ -545,11 +500,11 @@ _   map_manager_ptr_->getNonFeatureKdMap(i);
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
 
-    convert_double_to_vector(lidar_frame_list);
+    convert_double_to_vector(lidarFrameList);
 
-    Eigen::Quaterniond q_after_opti = lidar_frame_list.back().q;
-    Eigen::Vector3d t_after_opti = lidar_frame_list.back().p;
-    Eigen::Vector3d V_after_opti = lidar_frame_list.back().v;
+    Eigen::Quaterniond q_after_opti = lidarFrameList.back().q;
+    Eigen::Vector3d t_after_opti = lidarFrameList.back().p;
+    Eigen::Vector3d V_after_opti = lidarFrameList.back().v;
     double deltaR = (q_before_opti.angularDistance(q_after_opti)) * 180.0 / M_PI;
     double deltaT = (t_before_opti - t_after_opti).norm();
 
@@ -574,12 +529,12 @@ _   map_manager_ptr_->getNonFeatureKdMap(i);
         marginalization_info->addResidualBlockInfo(residual_block_info);
       }
       
-      auto frame_curr = lidar_frame_list.begin();
+      auto frame_curr = lidarFrameList.begin();
       std::advance(frame_curr, 1);
-      ceres::CostFunction* IMU_Cost = Cost_NavState_PRV_Bias::Create(frame_curr->imuIntegrator,
+      ceres::CostFunction* IMU_Cost = Cost_NavState_PRV_Bias::Create(frame_curr->imu_integrator,
                                                                      const_cast<Eigen::Vector3d&>(gravity),
                                                                      Eigen::LLT<Eigen::Matrix<double, 15, 15>>
-                                                                             (frame_curr->imuIntegrator.GetCovariance().inverse())
+                                                                             (frame_curr->imu_integrator.GetCovariance().inverse())
                                                                              .matrixL().transpose());
       auto *residual_block_info = new ResidualBlockInfo(IMU_Cost, nullptr,
                                                         std::vector<double *>{param_p_r_[0], param_v_bias_[0], param_p_r_[1], param_v_bias_[1]},
@@ -593,36 +548,37 @@ _   map_manager_ptr_->getNonFeatureKdMap(i);
       edgesLine[f].clear();
       edgesPlan[f].clear();
       edgesNon[f].clear();
-      threads[0] = std::thread(&PoseEstimator::processPointToLine, this,
+      threads[0] = std::thread(&LidarFeatureMatcher::match_point_to_line, &lidar_feature_matcher_,
                                std::ref(edgesLine[f]),
                                std::ref(vLineFeatures[f]),
-                               std::ref(pcf_corner_ptr[f]),
+                               std::ref(pcf_corner_stack_[f]),
                                std::ref(pcf_corner_from_local_),
-                               std::ref(kdtreeCornerFromLocal),
+                               std::ref(kdtree_corner_from_local_ptr_),
                                std::ref(exTlb),
                                std::ref(transformTobeMapped));
 
-      threads[1] = std::thread(&PoseEstimator::processPointToPlanVec, this,
+      threads[1] = std::thread(&LidarFeatureMatcher::match_point_to_plane_vector, &lidar_feature_matcher_,
                                std::ref(edgesPlan[f]),
                                std::ref(vPlanFeatures[f]),
-                               std::ref(pcf_surface_ptr[f]),
+                               std::ref(pcf_surface_stack_[f]),
                                std::ref(pcf_surface_from_local_),
-                               std::ref(kdtreeSurfFromLocal),
+                               std::ref(kdtree_surface_from_local_ptr_),
                                std::ref(exTlb),
                                std::ref(transformTobeMapped));
 
-      threads[2] = std::thread(&PoseEstimator::processNonFeatureICP, this,
+      threads[2] = std::thread(&LidarFeatureMatcher::match_none_feature_icp, &lidar_feature_matcher_,
                                std::ref(edgesNon[f]),
                                std::ref(vNonFeatures[f]),
-                               std::ref(pcf_none_ptr[f]),
+                               std::ref(pcf_none_stack_[f]),
                                std::ref(pcf_none_from_local_),
-                               std::ref(kdtreeNonFeatureFromLocal),
+                               std::ref(kdtree_none_from_local_ptr_),
                                std::ref(exTlb),
                                std::ref(transformTobeMapped));      
                       
       threads[0].join();
       threads[1].join();
       threads[2].join();
+
       int cntFtu = 0;
       for (auto &e : edgesLine[f]) {
         if(vLineFeatures[f][cntFtu].valid){
@@ -723,18 +679,18 @@ void PoseEstimator::update_local_map_increment(const PointCloudTypePtr& pcf_corn
   }
 
   PointCloudTypePtr temp(new PointCloudType());
-  down_size_filter_corner_.setInputCloud(pcf_corner_from_local_);
-  down_size_filter_corner_.filter(*temp);
+  down_size_corner_filter_.setInputCloud(pcf_corner_from_local_);
+  down_size_corner_filter_.filter(*temp);
   pcf_corner_from_local_ = temp;
 
   temp->clear();
-  down_size_filter_surface_.setInputCloud(pcf_surface_from_local_);
-  down_size_filter_surface_.filter(*temp);
+  down_size_surface_filter_.setInputCloud(pcf_surface_from_local_);
+  down_size_surface_filter_.filter(*temp);
   pcf_surface_from_local_ = temp;
 
   temp->clear();
-  down_size_filter_none_.setInputCloud(pcf_none_from_local_);
-  down_size_filter_none_.filter(*temp);
+  down_size_none_filter_.setInputCloud(pcf_none_from_local_);
+  down_size_none_filter_.filter(*temp);
   pcf_none_from_local_ = temp;
 
   local_map_id_++;

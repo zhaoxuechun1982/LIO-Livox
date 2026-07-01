@@ -42,13 +42,13 @@ public:
   ~PoseEstimator();
 
   void EstimateLidarPose(LidarFrameList& lidarFrameList,
-						             const Eigen::Matrix4d& exTlb,
-						             const Eigen::Vector3d& gravity,
-						             nav_msgs::Odometry& debugInfo);
+						 const Eigen::Matrix4d& exTlb,
+						 const Eigen::Vector3d& gravity,
+						 nav_msgs::Odometry& debugInfo);
 
   void Estimate(LidarFrameList& lidarFrameList,
-				        const Eigen::Matrix4d& exTlb,
-				        const Eigen::Vector3d& gravity);
+				const Eigen::Matrix4d& exTlb,
+				const Eigen::Vector3d& gravity);
 
   bool run_imu_align(LidarFrameDeque& frames,
                      Eigen::Vector3d& g_b,
@@ -57,8 +57,8 @@ public:
 
   inline PointCloudTypePtr get_corner_map()
   {
-		return map_manager_ptr_->get_corner_map();
-	}
+	  return map_manager_ptr_->get_corner_map();
+  }
 	
   inline PointCloudTypePtr get_surf_map()
   {
@@ -71,17 +71,19 @@ public:
 	}
 
 private:
+  friend class LidarFeatureMatcher;
+
   void thread_map_increment_update();
   void convert_vector_to_double(const LidarFrameList& lidar_frame_list);
   void convert_double_to_vector(LidarFrameList& lidar_frame_list);
-	void update_local_map_increment(const PointCloudTypePtr& laserCloudCornerStack,
-						   const PointCloudTypePtr& laserCloudSurfStack,
-						   const PointCloudTypePtr& laserCloudNonFeatureStack,
-						   const Eigen::Matrix4d& transformTobeMapped);
+  void update_local_map_increment(const PointCloudTypePtr& laserCloudCornerStack,
+						                      const PointCloudTypePtr& laserCloudSurfStack,
+						                      const PointCloudTypePtr& laserCloudNonFeatureStack,
+						                      const Eigen::Matrix4d& transformTobeMapped);
 
   MapManager* map_manager_ptr_;
   ImuAligner* imu_aligner_ptr_;
-  LidarFeatureMatcher* lidar_feature_matcher_ptr_;
+  LidarFeatureMatcher lidar_feature_matcher_;
 
   std::mutex map_mutex_;         // map operation mutex
   bool miu_thread_running_flag_; // map increment update thread running flag 
@@ -93,8 +95,8 @@ private:
   Eigen::Matrix4d transform_for_map_;
   unsigned int map_update_id_ = 0;
 
-	double param_p_r_[kSlideWindowsSize][6];
-	double param_v_bias_[kSlideWindowsSize][9];
+  double param_p_r_[kSlideWindowsSize][6];
+  double param_v_bias_[kSlideWindowsSize][9];
 
 	MarginalizationInfo *last_marginalization_info = nullptr;
 	std::vector<double *> last_marginalization_parameter_blocks;
@@ -102,32 +104,34 @@ private:
 	std::vector<PointCloudTypePtr> laserCloudSurfLast;
 	std::vector<PointCloudTypePtr> laserCloudNonFeatureLast;
 
-	std::vector<PointCloudTypePtr> laserCloudCornerStack;
-	std::vector<PointCloudTypePtr> laserCloudSurfStack;
-	std::vector<PointCloudTypePtr> laserCloudNonFeatureStack;
-	pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromLocal;
-	pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromLocal;
-	pcl::KdTreeFLANN<PointType>::Ptr kdtreeNonFeatureFromLocal;
+	std::vector<PointCloudTypePtr> pcf_corner_stack_;
+	std::vector<PointCloudTypePtr> pcf_surface_stack_;
+	std::vector<PointCloudTypePtr> pcf_none_stack_;
+
+	PointKdTreeTypePtr kdtree_corner_from_local_ptr_;
+	PointKdTreeTypePtr kdtree_surface_from_local_ptr_;
+	PointKdTreeTypePtr kdtree_none_from_local_ptr_;
 
   PointCloudTypePtr pcf_corner_from_local_;
 	PointCloudTypePtr pcf_surface_from_local_;
 	PointCloudTypePtr pcf_none_from_local_;
   
-	pcl::VoxelGrid<PointType> down_size_filter_corner_;
-	pcl::VoxelGrid<PointType> down_size_filter_surface_;
-	pcl::VoxelGrid<PointType> down_size_filter_none_;
+  // Down sampleing filter 
+	PointVoxelGridType down_size_corner_filter_;
+	PointVoxelGridType down_size_surface_filter_;
+	PointVoxelGridType down_size_none_filter_;
 
-	pcl::KdTreeFLANN<PointType> CornerKdMap[10000];
-	pcl::KdTreeFLANN<PointType> SurfKdMap[10000];
-	pcl::KdTreeFLANN<PointType> NonFeatureKdMap[10000];
-
-	pcl::PointCloud<PointType> GlobalSurfMap[10000];
-	pcl::PointCloud<PointType> GlobalCornerMap[10000];
-	pcl::PointCloud<PointType> GlobalNonFeatureMap[10000];
-
-	int laserCenWidth_last = 10;
-	int laserCenHeight_last = 5;
-	int laserCenDepth_last = 10;
+	static constexpr size_t kGlobalMapWindowSize = 10000;
+  static constexpr size_t kValidVoxelGridCount = 4851;
+	PointKdTreeType kdtree_corner_map_[kGlobalMapWindowSize];
+	PointKdTreeType kdtree_surface_map_[kGlobalMapWindowSize];
+	PointKdTreeType kdtree_none_map_[kGlobalMapWindowSize];
+	PointCloudType global_corner_map_[kGlobalMapWindowSize];
+	PointCloudType global_surface_map_[kGlobalMapWindowSize];
+	PointCloudType global_none_map_[kGlobalMapWindowSize];
+	int laser_center_width_last_ = 10;
+	int laser_center_height_last_ = 5;
+	int laser_center_depth_last_ = 10;
 
 	static constexpr size_t kLocalMapWindowSize = 50;
 	size_t local_map_id_ = 0;

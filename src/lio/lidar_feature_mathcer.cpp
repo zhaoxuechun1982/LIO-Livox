@@ -9,13 +9,15 @@
  */
 
 #include "lio/lidar_feature_matcher.hpp"
+#include "lio/pose_estimator.hpp"
+#include "lio/map_manager.hpp"
 #include "utils/ceres_utils.hpp"
 #include "sophus/so3.hpp"
 #include <ros/ros.h>
 
 namespace lio
 {
-
+/*
 LidarFeatureMatcher* LidarFeatureMatcher::instance_ptr_ = nullptr;
 
 LidarFeatureMatcher* LidarFeatureMatcher::instance_pointer(void)
@@ -39,68 +41,22 @@ void LidarFeatureMatcher::destroy_instance(void)
     instance_ptr_ = nullptr;
   }
 }
+*/
 
-void LidarFeatureMatcher::match_point_to_line(std::vector<ceres::CostFunction*>& edges,
-                                         std::vector<FeatureLine>& line_features,
-                                         const PointCloudTypePtr& corner_cloud,
-                                         const PointCloudTypePtr& local_corner_map,
-                                         const pcl::KdTreeFLANN<PointType>::Ptr& local_kdtree,
-                                         const Eigen::Matrix4d& T_lb,
-                                         const Eigen::Matrix4d& pose_map,
-                                         const EstimatorData& data)
-{
-
-}
-
-void LidarFeatureMatcher::match_point_to_plane(std::vector<ceres::CostFunction*>& edges,
-                                          std::vector<FeaturePlane>& plane_features,
-                                          const PointCloudTypePtr& surf_cloud,
-                                          const PointCloudTypePtr& local_surf_map,
-                                          const pcl::KdTreeFLANN<PointType>::Ptr& local_kdtree,
-                                          const Eigen::Matrix4d& T_lb,
-                                          const Eigen::Matrix4d& pose_map,
-                                          const EstimatorData& data)
-{
-
-}
-
-void LidarFeatureMatcher::match_point_to_plane_vector(std::vector<ceres::CostFunction*>& edges,
-                                                 std::vector<FeaturePlaneVector>& plane_vec_features,
-                                                 const PointCloudTypePtr& surf_cloud,
-                                                 const PointCloudTypePtr& local_surf_map,
-                                                 const pcl::KdTreeFLANN<PointType>::Ptr& local_kdtree,
-                                                 const Eigen::Matrix4d& T_lb,
-                                                 const Eigen::Matrix4d& pose_map,
-                                                 const EstimatorData& data)
-{
-
-}
-
-void LidarFeatureMatcher::match_non_feature_plane(std::vector<ceres::CostFunction*>& edges,
-                                            std::vector<FeatureNon>& non_features,
-                                            const PointCloudTypePtr& non_cloud,
-                                            const PointCloudTypePtr& local_non_map,
-                                            const pcl::KdTreeFLANN<PointType>::Ptr& local_kdtree,
-                                            const Eigen::Matrix4d& T_lb,
-                                            const Eigen::Matrix4d& pose_map,
-                                            const EstimatorData& data)
-{
-
-}
-
-void PoseEstimator::processPointToLine(std::vector<ceres::CostFunction *>& edges,
-                                   std::vector<FeatureLine>& vLineFeatures,
-                                   const PointCloudTypePtr& laserCloudCorner,
-                                   const PointCloudTypePtr& laserCloudCornerLocal,
-                                   const pcl::KdTreeFLANN<PointType>::Ptr& kdtreeLocal,
-                                   const Eigen::Matrix4d& exTlb,
-                                   const Eigen::Matrix4d& m4d) 
+void LidarFeatureMatcher::match_point_to_line(CeresCostFunctionPtrVector& edges,
+                                              FeatureLineVector& line_features,
+                                              const PointCloudTypePtr& corner_cloud,
+                                              const PointCloudTypePtr& cloud_corner_local,
+                                              const PointKdTreeTypePtr& kdtree_local,
+                                              const Eigen::Matrix4d& exTlb,
+                                              const Eigen::Matrix4d& m4d)
 {
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
   Tbl.topRightCorner(3,1) = -1.0 * Tbl.topLeftCorner(3,3) * exTlb.topRightCorner(3,1);
-  if(!vLineFeatures.empty()){
-    for(const auto& l : vLineFeatures){
+  
+  if(!line_features.empty()){
+    for(const auto& l : line_features){
       auto* e = Cost_NavState_IMU_Line::Create(l.pointOri,
                                                l.lineP1,
                                                l.lineP2,
@@ -119,34 +75,37 @@ void PoseEstimator::processPointToLine(std::vector<ceres::CostFunction *>& edges
   Eigen::Matrix< double, 3, 3 > _matA1;
   _matA1.setZero();
 
-  int laserCloudCornerStackNum = laserCloudCorner->points.size();
+  int laserCloudCornerStackNum = corner_cloud->points.size();
   PointCloudTypePtr kd_pointcloud(new PointCloudType);
   int debug_num1 = 0;
   int debug_num2 = 0;
   int debug_num12 = 0;
   int debug_num22 = 0;
   for (int i = 0; i < laserCloudCornerStackNum; i++) {
-    _pointOri = laserCloudCorner->points[i];
-    MAP_MANAGER::point_associate_to_map(&_pointOri, &_pointSel, m4d);
-    int id = map_manager_ptr_->FindUsedCornerMap(&_pointSel,laserCenWidth_last,laserCenHeight_last,laserCenDepth_last);
+    _pointOri = corner_cloud->points[i];
+    MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
+    int id = host_->map_manager_ptr_->FindUsedCornerMap(&_pointSel,
+                                                        host_->laser_center_width_last_,
+                                                        host_->laser_center_height_last_,
+                                                        host_->laser_center_depth_last_);
 
     if(id == 5000) continue;
 
     if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(GlobalCornerMap[id].points.size() > 100) {
-      CornerKdMap[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+    if(host_->global_corner_map_[id].points.size() > 100) {
+      host_->kdtree_corner_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
       
-      if (_pointSearchSqDis[4] < thres_dist) {
+      if (_pointSearchSqDis[4] < host_->thres_dist) {
 
         debug_num1 ++;
       float cx = 0;
       float cy = 0;
       float cz = 0;
       for (int j = 0; j < 5; j++) {
-        cx += GlobalCornerMap[id].points[_pointSearchInd[j]].x;
-        cy += GlobalCornerMap[id].points[_pointSearchInd[j]].y;
-        cz += GlobalCornerMap[id].points[_pointSearchInd[j]].z;
+        cx += host_->global_corner_map_[id].points[_pointSearchInd[j]].x;
+        cy += host_->global_corner_map_[id].points[_pointSearchInd[j]].y;
+        cz += host_->global_corner_map_[id].points[_pointSearchInd[j]].z;
       }
       cx /= 5;
       cy /= 5;
@@ -159,9 +118,9 @@ void PoseEstimator::processPointToLine(std::vector<ceres::CostFunction *>& edges
       float a23 = 0;
       float a33 = 0;
       for (int j = 0; j < 5; j++) {
-        float ax = GlobalCornerMap[id].points[_pointSearchInd[j]].x - cx;
-        float ay = GlobalCornerMap[id].points[_pointSearchInd[j]].y - cy;
-        float az = GlobalCornerMap[id].points[_pointSearchInd[j]].z - cz;
+        float ax = host_->global_corner_map_[id].points[_pointSearchInd[j]].x - cx;
+        float ay = host_->global_corner_map_[id].points[_pointSearchInd[j]].y - cy;
+        float az = host_->global_corner_map_[id].points[_pointSearchInd[j]].z - cz;
 
         a11 += ax * ax;
         a12 += ax * ay;
@@ -207,30 +166,29 @@ void PoseEstimator::processPointToLine(std::vector<ceres::CostFunction *>& edges
                                                  Tbl,
                                                  Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
         edges.push_back(e);
-        vLineFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+        line_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                    tripod1,
                                    tripod2);
-        vLineFeatures.back().calculate_error(m4d);
+        line_features.back().calculate_error(m4d);
 
         continue;
       }
-      
     }
     
     }
 
-    if(laserCloudCornerLocal->points.size() > 20 ){
-      kdtreeLocal->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
-      if (_pointSearchSqDis2[4] < thres_dist) {
+    if(cloud_corner_local->points.size() > 20 ){
+      kdtree_local->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
+      if (_pointSearchSqDis2[4] < host_->thres_dist) {
 
         debug_num2 ++;
         float cx = 0;
         float cy = 0;
         float cz = 0;
         for (int j = 0; j < 5; j++) {
-          cx += laserCloudCornerLocal->points[_pointSearchInd2[j]].x;
-          cy += laserCloudCornerLocal->points[_pointSearchInd2[j]].y;
-          cz += laserCloudCornerLocal->points[_pointSearchInd2[j]].z;
+          cx += cloud_corner_local->points[_pointSearchInd2[j]].x;
+          cy += cloud_corner_local->points[_pointSearchInd2[j]].y;
+          cz += cloud_corner_local->points[_pointSearchInd2[j]].z;
         }
         cx /= 5;
         cy /= 5;
@@ -243,9 +201,9 @@ void PoseEstimator::processPointToLine(std::vector<ceres::CostFunction *>& edges
         float a23 = 0;
         float a33 = 0;
         for (int j = 0; j < 5; j++) {
-          float ax = laserCloudCornerLocal->points[_pointSearchInd2[j]].x - cx;
-          float ay = laserCloudCornerLocal->points[_pointSearchInd2[j]].y - cy;
-          float az = laserCloudCornerLocal->points[_pointSearchInd2[j]].z - cz;
+          float ax = cloud_corner_local->points[_pointSearchInd2[j]].x - cx;
+          float ay = cloud_corner_local->points[_pointSearchInd2[j]].y - cy;
+          float az = cloud_corner_local->points[_pointSearchInd2[j]].z - cz;
 
           a11 += ax * ax;
           a12 += ax * ay;
@@ -291,29 +249,29 @@ void PoseEstimator::processPointToLine(std::vector<ceres::CostFunction *>& edges
                                                   Tbl,
                                                   Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
           edges.push_back(e);
-          vLineFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+          line_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                     tripod1,
                                     tripod2);
-          vLineFeatures.back().calculate_error(m4d);
+          line_features.back().calculate_error(m4d);
         }
       }
-    }
-     
+    } 
   }
 }
 
-void PoseEstimator::processPointToPlan(std::vector<ceres::CostFunction *>& edges,
-                                   std::vector<FeaturePlan>& vPlanFeatures,
-                                   const PointCloudTypePtr& laserCloudSurf,
-                                   const PointCloudTypePtr& laserCloudSurfLocal,
-                                   const pcl::KdTreeFLANN<PointType>::Ptr& kdtreeLocal,
+void LidarFeatureMatcher::match_point_to_plane(CeresCostFunctionPtrVector& edges,
+                                   FeaturePlaneVector& plane_features,
+                                   const PointCloudTypePtr& cloud_surface,
+                                   const PointCloudTypePtr& cloud_surface_local,
+                                   const pcl::KdTreeFLANN<PointType>::Ptr& kdtree_local,
                                    const Eigen::Matrix4d& exTlb,
-                                   const Eigen::Matrix4d& m4d){
+                                   const Eigen::Matrix4d& m4d)
+{
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
   Tbl.topRightCorner(3,1) = -1.0 * Tbl.topLeftCorner(3,3) * exTlb.topRightCorner(3,1);
-  if(!vPlanFeatures.empty()){
-    for(const auto& p : vPlanFeatures){
+  if(!plane_features.empty()){
+    for(const auto& p : plane_features){
       auto* e = Cost_NavState_IMU_Plan::Create(p.pointOri,
                                                p.pa,
                                                p.pb,
@@ -338,31 +296,31 @@ void PoseEstimator::processPointToPlan(std::vector<ceres::CostFunction *>& edges
   _matB0 *= -1;
   Eigen::Matrix< double, 3, 1 > _matX0;
   _matX0.setZero();
-  int laserCloudSurfStackNum = laserCloudSurf->points.size();
+  int laserCloudSurfStackNum = cloud_surface->points.size();
 
   int debug_num1 = 0;
   int debug_num2 = 0;
   int debug_num12 = 0;
   int debug_num22 = 0;
   for (int i = 0; i < laserCloudSurfStackNum; i++) {
-    _pointOri = laserCloudSurf->points[i];
-    MAP_MANAGER::point_associate_to_map(&_pointOri, &_pointSel, m4d);
+    _pointOri = cloud_surface->points[i];
+    MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
 
-    int id = map_manager_ptr_->FindUsedSurfMap(&_pointSel,laserCenWidth_last,laserCenHeight_last,laserCenDepth_last);
+    int id = host_->map_manager_ptr_->FindUsedSurfMap(&_pointSel,host_->laser_center_width_last_,host_->laser_center_height_last_,host_->laser_center_depth_last_);
 
     if(id == 5000) continue;
 
     if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(GlobalSurfMap[id].points.size() > 50) {
-      SurfKdMap[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+    if(host_->global_surface_map_[id].points.size() > 50) {
+      host_->kdtree_surface_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
 
       if (_pointSearchSqDis[4] < 1.0) {
         debug_num1 ++;
         for (int j = 0; j < 5; j++) {
-          _matA0(j, 0) = GlobalSurfMap[id].points[_pointSearchInd[j]].x;
-          _matA0(j, 1) = GlobalSurfMap[id].points[_pointSearchInd[j]].y;
-          _matA0(j, 2) = GlobalSurfMap[id].points[_pointSearchInd[j]].z;
+          _matA0(j, 0) = host_->global_surface_map_[id].points[_pointSearchInd[j]].x;
+          _matA0(j, 1) = host_->global_surface_map_[id].points[_pointSearchInd[j]].y;
+          _matA0(j, 2) = host_->global_surface_map_[id].points[_pointSearchInd[j]].z;
         }
         _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -379,9 +337,9 @@ void PoseEstimator::processPointToPlan(std::vector<ceres::CostFunction *>& edges
 
         bool planeValid = true;
         for (int j = 0; j < 5; j++) {
-          if (std::fabs(pa * GlobalSurfMap[id].points[_pointSearchInd[j]].x +
-                        pb * GlobalSurfMap[id].points[_pointSearchInd[j]].y +
-                        pc * GlobalSurfMap[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
+          if (std::fabs(pa * host_->global_surface_map_[id].points[_pointSearchInd[j]].x +
+                        pb * host_->global_surface_map_[id].points[_pointSearchInd[j]].y +
+                        pc * host_->global_surface_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
             planeValid = false;
             break;
           }
@@ -397,26 +355,26 @@ void PoseEstimator::processPointToPlan(std::vector<ceres::CostFunction *>& edges
                                                   Tbl,
                                                   Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
           edges.push_back(e);
-          vPlanFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+          plane_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                     pa,
                                     pb,
                                     pc,
                                     pd);
-          vPlanFeatures.back().calculate_error(m4d);
+          plane_features.back().calculate_error(m4d);
 
           continue;
         }
         
       }
     }
-    if(laserCloudSurfLocal->points.size() > 20 ){
-    kdtreeLocal->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
+    if(cloud_surface_local->points.size() > 20 ){
+    kdtree_local->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
     if (_pointSearchSqDis2[4] < 1.0) {
       debug_num2++;
       for (int j = 0; j < 5; j++) { 
-        _matA0(j, 0) = laserCloudSurfLocal->points[_pointSearchInd2[j]].x;
-        _matA0(j, 1) = laserCloudSurfLocal->points[_pointSearchInd2[j]].y;
-        _matA0(j, 2) = laserCloudSurfLocal->points[_pointSearchInd2[j]].z;
+        _matA0(j, 0) = cloud_surface_local->points[_pointSearchInd2[j]].x;
+        _matA0(j, 1) = cloud_surface_local->points[_pointSearchInd2[j]].y;
+        _matA0(j, 2) = cloud_surface_local->points[_pointSearchInd2[j]].z;
       }
       _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -433,9 +391,9 @@ void PoseEstimator::processPointToPlan(std::vector<ceres::CostFunction *>& edges
 
       bool planeValid = true;
       for (int j = 0; j < 5; j++) {
-        if (std::fabs(pa * laserCloudSurfLocal->points[_pointSearchInd2[j]].x +
-                      pb * laserCloudSurfLocal->points[_pointSearchInd2[j]].y +
-                      pc * laserCloudSurfLocal->points[_pointSearchInd2[j]].z + pd) > 0.2) {
+        if (std::fabs(pa * cloud_surface_local->points[_pointSearchInd2[j]].x +
+                      pb * cloud_surface_local->points[_pointSearchInd2[j]].y +
+                      pc * cloud_surface_local->points[_pointSearchInd2[j]].z + pd) > 0.2) {
           planeValid = false;
           break;
         }
@@ -451,12 +409,12 @@ void PoseEstimator::processPointToPlan(std::vector<ceres::CostFunction *>& edges
                                                 Tbl,
                                                 Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
         edges.push_back(e);
-        vPlanFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+        plane_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                   pa,
                                   pb,
                                   pc,
                                   pd);
-        vPlanFeatures.back().calculate_error(m4d);
+        plane_features.back().calculate_error(m4d);
       }
     }
   }
@@ -465,18 +423,19 @@ void PoseEstimator::processPointToPlan(std::vector<ceres::CostFunction *>& edges
 
 }
 
-void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& edges,
-                                   std::vector<FeaturePlaneVector>& vPlanFeatures,
-                                   const PointCloudTypePtr& laserCloudSurf,
-                                   const PointCloudTypePtr& laserCloudSurfLocal,
-                                   const pcl::KdTreeFLANN<PointType>::Ptr& kdtreeLocal,
+void LidarFeatureMatcher::match_point_to_plane_vector(CeresCostFunctionPtrVector& edges,
+                                   FeaturePlaneVectorVector& plane_vector_features,
+                                   const PointCloudTypePtr& cloud_surface,
+                                   const PointCloudTypePtr& cloud_surface_local,
+                                   const PointKdTreeTypePtr& kdtree_local,
                                    const Eigen::Matrix4d& exTlb,
-                                   const Eigen::Matrix4d& m4d){
+                                   const Eigen::Matrix4d& m4d)
+{
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
   Tbl.topRightCorner(3,1) = -1.0 * Tbl.topLeftCorner(3,3) * exTlb.topRightCorner(3,1);
-  if(!vPlanFeatures.empty()){
-    for(const auto& p : vPlanFeatures){
+  if(!plane_vector_features.empty()){
+    for(const auto& p : plane_vector_features){
       auto* e = Cost_NavState_IMU_Plan_Vec::Create(p.pointOri,
                                                    p.pointProj,
                                                    Tbl,
@@ -498,31 +457,31 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
   _matB0 *= -1;
   Eigen::Matrix< double, 3, 1 > _matX0;
   _matX0.setZero();
-  int laserCloudSurfStackNum = laserCloudSurf->points.size();
+  int laserCloudSurfStackNum = cloud_surface->points.size();
 
   int debug_num1 = 0;
   int debug_num2 = 0;
   int debug_num12 = 0;
   int debug_num22 = 0;
   for (int i = 0; i < laserCloudSurfStackNum; i++) {
-    _pointOri = laserCloudSurf->points[i];
-    MAP_MANAGER::point_associate_to_map(&_pointOri, &_pointSel, m4d);
+    _pointOri = cloud_surface->points[i];
+    MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
 
-    int id = map_manager_ptr_->FindUsedSurfMap(&_pointSel,laserCenWidth_last,laserCenHeight_last,laserCenDepth_last);
+    int id = host_->map_manager_ptr_->FindUsedSurfMap(&_pointSel,host_->laser_center_width_last_,host_->laser_center_height_last_,host_->laser_center_depth_last_);
 
     if(id == 5000) continue;
 
     if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(GlobalSurfMap[id].points.size() > 50) {
-      SurfKdMap[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+    if(host_->global_surface_map_[id].points.size() > 50) {
+      host_->kdtree_surface_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
 
-      if (_pointSearchSqDis[4] < thres_dist) {
+      if (_pointSearchSqDis[4] < host_->thres_dist) {
         debug_num1 ++;
         for (int j = 0; j < 5; j++) {
-          _matA0(j, 0) = GlobalSurfMap[id].points[_pointSearchInd[j]].x;
-          _matA0(j, 1) = GlobalSurfMap[id].points[_pointSearchInd[j]].y;
-          _matA0(j, 2) = GlobalSurfMap[id].points[_pointSearchInd[j]].z;
+          _matA0(j, 0) = host_->global_surface_map_[id].points[_pointSearchInd[j]].x;
+          _matA0(j, 1) = host_->global_surface_map_[id].points[_pointSearchInd[j]].y;
+          _matA0(j, 2) = host_->global_surface_map_[id].points[_pointSearchInd[j]].z;
         }
         _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -539,9 +498,9 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
 
         bool planeValid = true;
         for (int j = 0; j < 5; j++) {
-          if (std::fabs(pa * GlobalSurfMap[id].points[_pointSearchInd[j]].x +
-                        pb * GlobalSurfMap[id].points[_pointSearchInd[j]].y +
-                        pc * GlobalSurfMap[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
+          if (std::fabs(pa * host_->global_surface_map_[id].points[_pointSearchInd[j]].x +
+                        pb * host_->global_surface_map_[id].points[_pointSearchInd[j]].y +
+                        pc * host_->global_surface_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
             planeValid = false;
             break;
           }
@@ -559,8 +518,8 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
           Eigen::JacobiSVD<Eigen::Matrix3d> svd(J, Eigen::ComputeThinU | Eigen::ComputeThinV);
           Eigen::Matrix3d R_svd = svd.matrixV() * svd.matrixU().transpose();
           Eigen::Matrix3d info = (1.0/IMUIntegrator::lidar_m) * Eigen::Matrix3d::Identity();
-          info(1, 1) *= plan_weight_tan;
-          info(2, 2) *= plan_weight_tan;
+          info(1, 1) *= host_->plan_weight_tan;
+          info(2, 2) *= host_->plan_weight_tan;
           Eigen::Matrix3d sqrt_info = info * R_svd.transpose();
 
           auto* e = Cost_NavState_IMU_Plan_Vec::Create(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
@@ -568,10 +527,10 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
                                                        Tbl,
                                                        sqrt_info);
           edges.push_back(e);
-          vPlanFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+          plane_vector_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                      point_proj,
                                      sqrt_info);
-          vPlanFeatures.back().calculate_error(m4d);
+          plane_vector_features.back().calculate_error(m4d);
 
           continue;
         }
@@ -580,14 +539,14 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
     }
 
 
-    if(laserCloudSurfLocal->points.size() > 20 ){
-    kdtreeLocal->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
-    if (_pointSearchSqDis2[4] < thres_dist) {
+    if(cloud_surface_local->points.size() > 20 ) {
+    kdtree_local->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
+    if (_pointSearchSqDis2[4] < host_->thres_dist) {
       debug_num2++;
       for (int j = 0; j < 5; j++) { 
-        _matA0(j, 0) = laserCloudSurfLocal->points[_pointSearchInd2[j]].x;
-        _matA0(j, 1) = laserCloudSurfLocal->points[_pointSearchInd2[j]].y;
-        _matA0(j, 2) = laserCloudSurfLocal->points[_pointSearchInd2[j]].z;
+        _matA0(j, 0) = cloud_surface_local->points[_pointSearchInd2[j]].x;
+        _matA0(j, 1) = cloud_surface_local->points[_pointSearchInd2[j]].y;
+        _matA0(j, 2) = cloud_surface_local->points[_pointSearchInd2[j]].z;
       }
       _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -604,9 +563,9 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
 
       bool planeValid = true;
       for (int j = 0; j < 5; j++) {
-        if (std::fabs(pa * laserCloudSurfLocal->points[_pointSearchInd2[j]].x +
-                      pb * laserCloudSurfLocal->points[_pointSearchInd2[j]].y +
-                      pc * laserCloudSurfLocal->points[_pointSearchInd2[j]].z + pd) > 0.2) {
+        if (std::fabs(pa * cloud_surface_local->points[_pointSearchInd2[j]].x +
+                      pb * cloud_surface_local->points[_pointSearchInd2[j]].y +
+                      pc * cloud_surface_local->points[_pointSearchInd2[j]].z + pd) > 0.2) {
           planeValid = false;
           break;
         }
@@ -624,8 +583,8 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
         Eigen::JacobiSVD<Eigen::Matrix3d> svd(J, Eigen::ComputeThinU | Eigen::ComputeThinV);
         Eigen::Matrix3d R_svd = svd.matrixV() * svd.matrixU().transpose();
         Eigen::Matrix3d info = (1.0/IMUIntegrator::lidar_m) * Eigen::Matrix3d::Identity();
-        info(1, 1) *= plan_weight_tan;
-        info(2, 2) *= plan_weight_tan;
+        info(1, 1) *= host_->plan_weight_tan;
+        info(2, 2) *= host_->plan_weight_tan;
         Eigen::Matrix3d sqrt_info = info * R_svd.transpose();
 
         auto* e = Cost_NavState_IMU_Plan_Vec::Create(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
@@ -633,31 +592,30 @@ void PoseEstimator::processPointToPlanVec(std::vector<ceres::CostFunction *>& ed
                                                       Tbl,
                                                       sqrt_info);
         edges.push_back(e);
-        vPlanFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+        plane_vector_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                     point_proj,
                                     sqrt_info);
-        vPlanFeatures.back().calculate_error(m4d);
+        plane_vector_features.back().calculate_error(m4d);
       }
     }
+    }
   }
-
-  }
-
 }
 
 
-void PoseEstimator::processNonFeatureICP(std::vector<ceres::CostFunction *>& edges,
-                                     std::vector<FeatureNone>& vNonFeatures,
-                                     const PointCloudTypePtr& laserCloudNonFeature,
-                                     const PointCloudTypePtr& laserCloudNonFeatureLocal,
-                                     const pcl::KdTreeFLANN<PointType>::Ptr& kdtreeLocal,
-                                     const Eigen::Matrix4d& exTlb,
-                                     const Eigen::Matrix4d& m4d){
+void LidarFeatureMatcher::match_none_feature_icp(CeresCostFunctionPtrVector& edges,
+                                                 FeatureNoneVector& none_features,
+                                                 const PointCloudTypePtr& cloud_none,
+                                                 const PointCloudTypePtr& cloud_none_local,
+                                                 const PointKdTreeTypePtr& kdtree_local,
+                                                 const Eigen::Matrix4d& exTlb,
+                                                 const Eigen::Matrix4d& m4d)
+{
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
   Tbl.topRightCorner(3,1) = -1.0 * Tbl.topLeftCorner(3,3) * exTlb.topRightCorner(3,1);
-  if(!vNonFeatures.empty()){
-    for(const auto& p : vNonFeatures){
+  if(!none_features.empty()){
+    for(const auto& p : none_features){
       auto* e = Cost_NonFeature_ICP::Create(p.pointOri,
                                             p.pa,
                                             p.pb,
@@ -684,23 +642,23 @@ void PoseEstimator::processNonFeatureICP(std::vector<ceres::CostFunction *>& edg
   Eigen::Matrix< double, 3, 1 > _matX0;
   _matX0.setZero();
 
-  int laserCloudNonFeatureStackNum = laserCloudNonFeature->points.size();
+  int laserCloudNonFeatureStackNum = cloud_none->points.size();
   for (int i = 0; i < laserCloudNonFeatureStackNum; i++) {
-    _pointOri = laserCloudNonFeature->points[i];
-    MAP_MANAGER::point_associate_to_map(&_pointOri, &_pointSel, m4d);
-    int id = map_manager_ptr_->FindUsedNonFeatureMap(&_pointSel,laserCenWidth_last,laserCenHeight_last,laserCenDepth_last);
+    _pointOri = cloud_none->points[i];
+    MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
+    int id = host_->map_manager_ptr_->FindUsedNonFeatureMap(&_pointSel,host_->laser_center_width_last_,host_->laser_center_height_last_,host_->laser_center_depth_last_);
 
     if(id == 5000) continue;
 
     if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(GlobalNonFeatureMap[id].points.size() > 100) {
-      NonFeatureKdMap[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
-      if (_pointSearchSqDis[4] < 1 * thres_dist) {
+    if(host_->global_none_map_[id].points.size() > 100) {
+      host_->kdtree_none_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+      if (_pointSearchSqDis[4] < 1 * host_->thres_dist) {
         for (int j = 0; j < 5; j++) {
-          _matA0(j, 0) = GlobalNonFeatureMap[id].points[_pointSearchInd[j]].x;
-          _matA0(j, 1) = GlobalNonFeatureMap[id].points[_pointSearchInd[j]].y;
-          _matA0(j, 2) = GlobalNonFeatureMap[id].points[_pointSearchInd[j]].z;
+          _matA0(j, 0) = host_->global_none_map_[id].points[_pointSearchInd[j]].x;
+          _matA0(j, 1) = host_->global_none_map_[id].points[_pointSearchInd[j]].y;
+          _matA0(j, 2) = host_->global_none_map_[id].points[_pointSearchInd[j]].z;
         }
         _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -717,9 +675,9 @@ void PoseEstimator::processNonFeatureICP(std::vector<ceres::CostFunction *>& edg
 
         bool planeValid = true;
         for (int j = 0; j < 5; j++) {
-          if (std::fabs(pa * GlobalNonFeatureMap[id].points[_pointSearchInd[j]].x +
-                        pb * GlobalNonFeatureMap[id].points[_pointSearchInd[j]].y +
-                        pc * GlobalNonFeatureMap[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
+          if (std::fabs(pa * host_->global_none_map_[id].points[_pointSearchInd[j]].x +
+                        pb * host_->global_none_map_[id].points[_pointSearchInd[j]].y +
+                        pc * host_->global_none_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
             planeValid = false;
             break;
           }
@@ -735,12 +693,12 @@ void PoseEstimator::processNonFeatureICP(std::vector<ceres::CostFunction *>& edg
                                                 Tbl,
                                                 Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
           edges.push_back(e);
-          vNonFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+          none_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                     pa,
                                     pb,
                                     pc,
                                     pd);
-          vNonFeatures.back().calculate_error(m4d);
+          none_features.back().calculate_error(m4d);
 
           continue;
         }
@@ -748,13 +706,13 @@ void PoseEstimator::processNonFeatureICP(std::vector<ceres::CostFunction *>& edg
     
     }
 
-    if(laserCloudNonFeatureLocal->points.size() > 20 ){
-      kdtreeLocal->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
-      if (_pointSearchSqDis2[4] < 1 * thres_dist) {
+    if(cloud_none_local->points.size() > 20 ){
+      kdtree_local->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
+      if (_pointSearchSqDis2[4] < 1 * host_->thres_dist) {
         for (int j = 0; j < 5; j++) { 
-          _matA0(j, 0) = laserCloudNonFeatureLocal->points[_pointSearchInd2[j]].x;
-          _matA0(j, 1) = laserCloudNonFeatureLocal->points[_pointSearchInd2[j]].y;
-          _matA0(j, 2) = laserCloudNonFeatureLocal->points[_pointSearchInd2[j]].z;
+          _matA0(j, 0) = cloud_none_local->points[_pointSearchInd2[j]].x;
+          _matA0(j, 1) = cloud_none_local->points[_pointSearchInd2[j]].y;
+          _matA0(j, 2) = cloud_none_local->points[_pointSearchInd2[j]].z;
         }
         _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -771,9 +729,9 @@ void PoseEstimator::processNonFeatureICP(std::vector<ceres::CostFunction *>& edg
 
         bool planeValid = true;
         for (int j = 0; j < 5; j++) {
-          if (std::fabs(pa * laserCloudNonFeatureLocal->points[_pointSearchInd2[j]].x +
-                        pb * laserCloudNonFeatureLocal->points[_pointSearchInd2[j]].y +
-                        pc * laserCloudNonFeatureLocal->points[_pointSearchInd2[j]].z + pd) > 0.2) {
+          if (std::fabs(pa * cloud_none_local->points[_pointSearchInd2[j]].x +
+                        pb * cloud_none_local->points[_pointSearchInd2[j]].y +
+                        pc * cloud_none_local->points[_pointSearchInd2[j]].z + pd) > 0.2) {
             planeValid = false;
             break;
           }
@@ -789,12 +747,12 @@ void PoseEstimator::processNonFeatureICP(std::vector<ceres::CostFunction *>& edg
                                                 Tbl,
                                                 Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
           edges.push_back(e);
-          vNonFeatures.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+          none_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
                                     pa,
                                     pb,
                                     pc,
                                     pd);
-          vNonFeatures.back().calculate_error(m4d);
+          none_features.back().calculate_error(m4d);
         }
       }
     }
