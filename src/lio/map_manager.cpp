@@ -1,34 +1,40 @@
 #include "lio/map_manager.hpp"
 #include <fstream>
 
+namespace lio
+{
 MapManager::MapManager(const float& filter_corner, const float& filter_surf) 
 {
   for (int i = 0; i < laserCloudNum; i++) {
-    laserCloudCornerArray[i].reset(new pcl::PointCloud<PointType>());
-    laserCloudSurfArray[i].reset(new pcl::PointCloud<PointType>());
-    laserCloudNonFeatureArray[i].reset(new pcl::PointCloud<PointType>());
-    laserCloudCornerArrayStack[i].reset(new pcl::PointCloud<PointType>());
-    laserCloudSurfArrayStack[i].reset(new pcl::PointCloud<PointType>());
-    laserCloudNonFeatureArrayStack[i].reset(new pcl::PointCloud<PointType>());
+    laserCloudCornerArray[i].reset(new PointCloudType());
+    laserCloudSurfArray[i].reset(new PointCloudType());
+    laserCloudNonFeatureArray[i].reset(new PointCloudType());
+    laserCloudCornerArrayStack[i].reset(new PointCloudType());
+    laserCloudSurfArrayStack[i].reset(new PointCloudType());
+    laserCloudNonFeatureArrayStack[i].reset(new PointCloudType());
 
-    laserCloudCornerKdMap[i].reset(new pcl::KdTreeFLANN<PointType>);
-    laserCloudSurfKdMap[i].reset(new pcl::KdTreeFLANN<PointType>);
-    laserCloudNonFeatureKdMap[i].reset(new pcl::KdTreeFLANN<PointType>);
+    laserCloudCornerKdMap[i].reset(new PointKdTreeType);
+    laserCloudSurfKdMap[i].reset(new PointKdTreeType);
+    laserCloudNonFeatureKdMap[i].reset(new PointKdTreeType);
   }
-  for (int i = 0; i < localMapWindowSize; i++) {
-    localCornerMap[i].reset(new pcl::PointCloud<PointType>());
-    localSurfMap[i].reset(new pcl::PointCloud<PointType>());
-    localNonFeatureMap[i].reset(new pcl::PointCloud<PointType>());
+
+  for (int i = 0; i < kLocalMapWindowSize; i++) {
+    local_corner_map_[i].reset(new PointCloudType());
+    local_surface_map_[i].reset(new PointCloudType());
+    local_none_map_[i].reset(new PointCloudType());
   }
-  laserCloudCornerFromMap.reset(new pcl::PointCloud<PointType>());
-  laserCloudSurfFromMap.reset(new pcl::PointCloud<PointType>());
-  laserCloudNonFeatureFromMap.reset(new pcl::PointCloud<PointType>());
+
+  laserCloudCornerFromMap.reset(new PointCloudType());
+  laserCloudSurfFromMap.reset(new PointCloudType());
+  laserCloudNonFeatureFromMap.reset(new PointCloudType());
+  
   downSizeFilterCorner.setLeafSize(0.4, 0.4, 0.4);
   downSizeFilterSurf.setLeafSize(0.4, 0.4, 0.4);
   downSizeFilterNonFeature.setLeafSize(0.4, 0.4, 0.4);
 }
 
-size_t MapManager::ToIndex(int i, int j, int k)  {
+size_t MapManager::ToIndex(int i, int j, int k) 
+{
   return i + laserCloudDepth * j + laserCloudDepth * laserCloudWidth * k;
 }
 
@@ -38,8 +44,9 @@ size_t MapManager::ToIndex(int i, int j, int k)  {
  * \param[in] _transformTobeMapped: transform matrix between pi and po
  */
 void MapManager::point_associate_to_map(PointType const * const pi,
-                                      PointType * const po,
-                                      const Eigen::Matrix4d& _transformTobeMapped){
+                                        PointType * const po,
+                                        const Eigen::Matrix4d& _transformTobeMapped) 
+{
         Eigen::Vector3d pin, pout;
         pin.x() = pi->x;
         pin.y() = pi->y;
@@ -50,14 +57,15 @@ void MapManager::point_associate_to_map(PointType const * const pi,
         po->z = pout.z();
         po->intensity = pi->intensity;
         po->normal_z = pi->normal_z;
-      }
-void MapManager::feature_associate_to_map(const pcl::PointCloud<PointType>::Ptr& laserCloudCorner,
-                                        const pcl::PointCloud<PointType>::Ptr& laserCloudSurf,
-                                        const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeature,
-                                        const pcl::PointCloud<PointType>::Ptr& laserCloudCornerToMap,
-                                        const pcl::PointCloud<PointType>::Ptr& laserCloudSurfToMap,
-                                        const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureToMap,
-                                        const Eigen::Matrix4d& transformTobeMapped){
+}
+void MapManager::feature_associate_to_map(const PointCloudType::Ptr& laserCloudCorner,
+                                          const PointCloudType::Ptr& laserCloudSurf,
+                                          const PointCloudType::Ptr& laserCloudNonFeature,
+                                          const PointCloudType::Ptr& laserCloudCornerToMap,
+                                          const PointCloudType::Ptr& laserCloudSurfToMap,
+                                          const PointCloudType::Ptr& laserCloudNonFeatureToMap,
+                                          const Eigen::Matrix4d& transformTobeMapped)
+{
 
   int laserCloudCornerNum = laserCloudCorner->points.size();
   int laserCloudSurfNum = laserCloudSurf->points.size();
@@ -75,28 +83,27 @@ void MapManager::feature_associate_to_map(const pcl::PointCloud<PointType>::Ptr&
     point_associate_to_map(&laserCloudNonFeature->points[i], &pointSel3, transformTobeMapped);
     laserCloudNonFeatureToMap->push_back(pointSel3);
   }
-  
 }
 /** \brief add new lidar points to the map
  * \param[in] laserCloudCornerStack: coner feature points that need to be added to map
  * \param[in] laserCloudSurfStack: surf feature points that need to be added to map
  * \param[in] transformTobeMapped: transform matrix of the lidar pose
  */
-void MapManager::map_increment_update(const pcl::PointCloud<PointType>::Ptr& laserCloudCornerStack,
-                               const pcl::PointCloud<PointType>::Ptr& laserCloudSurfStack,
-                               const pcl::PointCloud<PointType>::Ptr& laserCloudNonFeatureStack,
+void MapManager::map_increment_update(const PointCloudType::Ptr& laserCloudCornerStack,
+                               const PointCloudType::Ptr& laserCloudSurfStack,
+                               const PointCloudType::Ptr& laserCloudNonFeatureStack,
                                const Eigen::Matrix4d& transformTobeMapped){
   
   clock_t t0,t1,t2,t3,t4,t5;
   t0 = clock();
   std::unique_lock<std::mutex> locker2(mtx_MapManager);
   for(int i = 0; i < laserCloudNum; i++){
-    CornerKdMap_last[i] = *laserCloudCornerKdMap[i];
-    SurfKdMap_last[i] = *laserCloudSurfKdMap[i];
-    NonFeatureKdMap_last[i] = *laserCloudNonFeatureKdMap[i];
-    laserCloudSurf_for_match[i] = *laserCloudSurfArray[i];
-    laserCloudCorner_for_match[i] = *laserCloudCornerArray[i];
-    laserCloudNonFeature_for_match[i] = *laserCloudNonFeatureArray[i];
+    kdtree_corner_map_last_[i] = *laserCloudCornerKdMap[i];
+    kdtree_surface_map_last_[i] = *laserCloudSurfKdMap[i];
+    kdtree_none_map_last_[i] = *laserCloudNonFeatureKdMap[i];
+    surface_cloud_for_match_[i] = *laserCloudSurfArray[i];
+    corner_cloud_for_match_[i] = *laserCloudCornerArray[i];
+    none_cloud_for_match_[i] = *laserCloudNonFeatureArray[i];
   }
 
   laserCloudCenWidth_last = laserCloudCenWidth;
@@ -187,7 +194,7 @@ void MapManager::map_increment_update(const pcl::PointCloud<PointType>::Ptr& las
         downSizeFilterCorner.setInputCloud(laserCloudCornerArray[i]);
         laserCloudCornerArrayStack[i]->clear();
         downSizeFilterCorner.filter(*laserCloudCornerArrayStack[i]);
-        pcl::PointCloud<PointType>::Ptr tmp = laserCloudCornerArrayStack[i];
+        PointCloudType::Ptr tmp = laserCloudCornerArrayStack[i];
         laserCloudCornerArrayStack[i] = laserCloudCornerArray[i];
         laserCloudCornerArray[i] = tmp;
       }
@@ -201,7 +208,7 @@ void MapManager::map_increment_update(const pcl::PointCloud<PointType>::Ptr& las
         downSizeFilterSurf.setInputCloud(laserCloudSurfArray[i]);
         laserCloudSurfArrayStack[i]->clear();
         downSizeFilterSurf.filter(*laserCloudSurfArrayStack[i]);
-        pcl::PointCloud<PointType>::Ptr tmp = laserCloudSurfArrayStack[i];
+        PointCloudType::Ptr tmp = laserCloudSurfArrayStack[i];
         laserCloudSurfArrayStack[i] = laserCloudSurfArray[i];
         laserCloudSurfArray[i] = tmp;
       }
@@ -215,7 +222,7 @@ void MapManager::map_increment_update(const pcl::PointCloud<PointType>::Ptr& las
         downSizeFilterNonFeature.setInputCloud(laserCloudNonFeatureArray[i]);
         laserCloudNonFeatureArrayStack[i]->clear();
         downSizeFilterNonFeature.filter(*laserCloudNonFeatureArrayStack[i]);
-        pcl::PointCloud<PointType>::Ptr tmp = laserCloudNonFeatureArrayStack[i];
+        PointCloudType::Ptr tmp = laserCloudNonFeatureArrayStack[i];
         laserCloudNonFeatureArrayStack[i] = laserCloudNonFeatureArray[i];
         laserCloudNonFeatureArray[i] = tmp;
       }
@@ -267,19 +274,19 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     for (int j = 0; j < laserCloudWidth; j++) {
       for (int k = 0; k < laserCloudHeight; k++) {
         int i = laserCloudDepth - 1;
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeCornerPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeSurfPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
                 laserCloudSurfKdMap[ToIndex(i, j, k)];
 
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeNonFeaturePointerKd =
+        PointKdTreeType::Ptr laserCloudCubeNonFeaturePointerKd =
                 laserCloudNonFeatureKdMap[ToIndex(i, j, k)];
 
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+        PointCloudType::Ptr laserCloudCubeCornerPointer =
                 laserCloudCornerArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+        PointCloudType::Ptr laserCloudCubeSurfPointer =
                 laserCloudSurfArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeNonFeaturePointer =
+        PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
 
         for (; i >= 1; i--) {
@@ -315,18 +322,18 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     for (int j = 0; j < laserCloudWidth; j++) {
       for (int k = 0; k < laserCloudHeight; k++) {
         int i = 0;
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeCornerPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeSurfPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
                 laserCloudSurfKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeNonFeaturePointerKd =
+        PointKdTreeType::Ptr laserCloudCubeNonFeaturePointerKd =
                 laserCloudNonFeatureKdMap[ToIndex(i, j, k)];
 
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+        PointCloudType::Ptr laserCloudCubeCornerPointer =
                 laserCloudCornerArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+        PointCloudType::Ptr laserCloudCubeSurfPointer =
                 laserCloudSurfArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeNonFeaturePointer =
+        PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
         
         for (; i < laserCloudDepth - 1; i++) {
@@ -361,18 +368,18 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     for (int i = 0; i < laserCloudDepth; i++) {
       for (int k = 0; k < laserCloudHeight; k++) {
         int j = laserCloudWidth - 1;
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeCornerPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeSurfPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
                 laserCloudSurfKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeNonFeaturePointerKd =
+        PointKdTreeType::Ptr laserCloudCubeNonFeaturePointerKd =
                 laserCloudNonFeatureKdMap[ToIndex(i, j, k)];
 
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+        PointCloudType::Ptr laserCloudCubeCornerPointer =
                 laserCloudCornerArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+        PointCloudType::Ptr laserCloudCubeSurfPointer =
                 laserCloudSurfArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeNonFeaturePointer =
+        PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
         for (; j >= 1; j--) {
           const size_t index_a = ToIndex(i, j, k);
@@ -406,18 +413,18 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     for (int i = 0; i < laserCloudDepth; i++) {
       for (int k = 0; k < laserCloudHeight; k++) {
         int j = 0;
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeCornerPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeSurfPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
                 laserCloudSurfKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeNonFeaturePointerKd =
+        PointKdTreeType::Ptr laserCloudCubeNonFeaturePointerKd =
                 laserCloudNonFeatureKdMap[ToIndex(i, j, k)];
 
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+        PointCloudType::Ptr laserCloudCubeCornerPointer =
                 laserCloudCornerArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+        PointCloudType::Ptr laserCloudCubeSurfPointer =
                 laserCloudSurfArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeNonFeaturePointer =
+        PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
         for (; j < laserCloudWidth - 1; j++) {
           const size_t index_a = ToIndex(i, j, k);
@@ -451,18 +458,18 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     for (int i = 0; i < laserCloudDepth; i++) {
       for (int j = 0; j < laserCloudWidth; j++) {
         int k = laserCloudHeight - 1;
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeCornerPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeSurfPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
                 laserCloudSurfKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeNonFeaturePointerKd =
+        PointKdTreeType::Ptr laserCloudCubeNonFeaturePointerKd =
                 laserCloudNonFeatureKdMap[ToIndex(i, j, k)];
 
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+        PointCloudType::Ptr laserCloudCubeCornerPointer =
                 laserCloudCornerArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+        PointCloudType::Ptr laserCloudCubeSurfPointer =
                 laserCloudSurfArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeNonFeaturePointer =
+        PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
         for (; k >= 1; k--) {
           const size_t index_a = ToIndex(i, j, k);
@@ -496,18 +503,18 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     for (int i = 0; i < laserCloudDepth; i++) {
       for (int j = 0; j < laserCloudWidth; j++) {
         int k = 0;
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeCornerPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeSurfPointerKd =
+        PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
                 laserCloudSurfKdMap[ToIndex(i, j, k)];
-        pcl::KdTreeFLANN<PointType>::Ptr laserCloudCubeNonFeaturePointerKd =
+        PointKdTreeType::Ptr laserCloudCubeNonFeaturePointerKd =
                 laserCloudNonFeatureKdMap[ToIndex(i, j, k)];
 
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+        PointCloudType::Ptr laserCloudCubeCornerPointer =
                 laserCloudCornerArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+        PointCloudType::Ptr laserCloudCubeSurfPointer =
                 laserCloudSurfArray[ToIndex(i, j, k)];
-        pcl::PointCloud<PointType>::Ptr laserCloudCubeNonFeaturePointer =
+        PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
         for (; k < laserCloudHeight - 1; k++) {
           const size_t index_a = ToIndex(i, j, k);
@@ -609,3 +616,5 @@ size_t MapManager::FindUsedNonFeatureMap(const PointType *p,int a,int b, int c)
 
     return cubeInd; 
 }
+
+} // end of namespace lio

@@ -157,7 +157,7 @@ namespace lio
     }
   }
 
-void PoseEstimator::EstimateLidarPose(LidarFrameList& lidar_frame_list,
+void PoseEstimator::estimate_lidar_pose(LidarFrameList& lidar_frame_list,
                                       const Eigen::Matrix4d& exTlb,
                                       const Eigen::Vector3d& gravity,
                                       nav_msgs::Odometry& debugInfo)                         
@@ -208,7 +208,7 @@ void PoseEstimator::EstimateLidarPose(LidarFrameList& lidar_frame_list,
 
   if (((laserCloudCornerFromMapNum >= 0 && laserCloudSurfFromMapNum > 100) || 
        (laserCloudCornerFromLocalNum >= 0 && laserCloudSurfFromLocalNum > 100))) {
-    Estimate(lidar_frame_list, exTlb, gravity);
+    estimate(lidar_frame_list, exTlb, gravity);
   }
 
   transformTobeMapped = Eigen::Matrix4d::Identity();
@@ -227,9 +227,10 @@ void PoseEstimator::EstimateLidarPose(LidarFrameList& lidar_frame_list,
   locker.unlock();
 }
 
-void PoseEstimator::Estimate(std::list<LidarFrame>& lidarFrameList,
+void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
                          const Eigen::Matrix4d& exTlb,
-                         const Eigen::Vector3d& gravity){
+                         const Eigen::Vector3d& gravity)
+{
 
   int num_corner_map = 0;
   int num_surf_map = 0;
@@ -249,9 +250,9 @@ void PoseEstimator::Estimate(std::list<LidarFrame>& lidarFrameList,
     kdtree_surface_map_[i] = map_manager_ptr_->get_kdtree_surface_map(i);
     kdtree_none_map_[i] = map_manager_ptr_->get_kdtree_none_map(i);
 
-    global_corner_map_[i] = map_manager_ptr_->laserCloudCorner_for_match[i];
-    global_surface_map_[i] = map_manager_ptr_->laserCloudSurf_for_match[i];
-    global_none_map_[i] = map_manager_ptr_->laserCloudNonFeature_for_match[i];
+    global_corner_map_[i] = map_manager_ptr_->get_corner_cloud_for_match(i);
+    global_surface_map_[i] = map_manager_ptr_->get_surface_cloud_for_match(i);
+    global_none_map_[i] = map_manager_ptr_->get_none_cloud_for_match(i);
   }
   laser_center_width_last_ = map_manager_ptr_->get_laserCloudCenWidth_last();
   laser_center_height_last_ = map_manager_ptr_->get_laserCloudCenHeight_last();

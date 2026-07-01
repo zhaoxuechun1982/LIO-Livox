@@ -263,7 +263,7 @@ void LidarFeatureMatcher::match_point_to_plane(CeresCostFunctionPtrVector& edges
                                    FeaturePlaneVector& plane_features,
                                    const PointCloudTypePtr& cloud_surface,
                                    const PointCloudTypePtr& cloud_surface_local,
-                                   const pcl::KdTreeFLANN<PointType>::Ptr& kdtree_local,
+                                   const PointKdTreeType::Ptr& kdtree_local,
                                    const Eigen::Matrix4d& exTlb,
                                    const Eigen::Matrix4d& m4d)
 {
@@ -757,8 +757,6 @@ void LidarFeatureMatcher::match_none_feature_icp(CeresCostFunctionPtrVector& edg
       }
     }
   }
-
 }
-
 
 }

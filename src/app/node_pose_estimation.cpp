@@ -559,7 +559,7 @@ void process(void)
 	    remove_lidar_distortion(laserCloudFullRes, delta_Rl, delta_tl);
 
       // Optimize current lidar pose with IMU
-      g_estimator_ptr->EstimateLidarPose(*lidar_list, exTlb, g_gravity_vector, debugInfo);
+      g_estimator_ptr->estimate_lidar_pose(*lidar_list, exTlb, g_gravity_vector, debugInfo);
 
       // Pointer buffer for corner and surface feature map points
       pcl::PointCloud<PointType>::Ptr laserCloudCornerMap(new pcl::PointCloud<PointType>());
