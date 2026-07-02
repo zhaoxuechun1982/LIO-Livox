@@ -9,6 +9,7 @@
 #include "lio/imu_integrator.hpp"
 #include "lio/lidar_feature_matcher.hpp"
 #include "lio/map_manager.hpp"
+#include "lio/map_cacher.hpp"
 
 #include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
@@ -67,7 +68,7 @@ public:
   }
 
 private:
-  friend class LidarFeatureMatcher;
+  //friend class LidarFeatureMatcher;
   void estimate(LidarFrameList& lidarFrameList,
 				const Eigen::Matrix4d& exTlb,
 				const Eigen::Vector3d& gravity);
@@ -82,8 +83,9 @@ private:
 
   // To do...to reserve										  
   MapManager* map_manager_ptr_;
+  MapCacher* map_cacher_ptr_;
   ImuAligner* imu_aligner_ptr_;
-  LidarFeatureMatcher lidar_feature_matcher_;
+  LidarFeatureMatcher* lidar_feature_matcher_ptr_;
 
   double param_p_r_[kSlideWindowsSize][6];
   double param_v_bias_[kSlideWindowsSize][9];
@@ -92,10 +94,6 @@ private:
   std::vector<double *> last_marginalization_parameter_blocks;
 
   static constexpr unsigned int kMapSkipFrameCount = 2;
-  double plan_weight_tan = 0.0;
-  double thres_dist = 1.0;
-
-  static constexpr size_t kValidVoxelGridCount = 4851;
 
   // to move
   std::mutex map_mutex_;         // map operation mutex
@@ -135,20 +133,10 @@ private:
   PointVoxelGridType down_size_surface_filter_;
   PointVoxelGridType down_size_none_filter_;
 
-  // To do...to remove
-  static constexpr size_t kGlobalMapWindowSize = 10000;
-  PointKdTreeType kdtree_corner_map_[kGlobalMapWindowSize];
-  PointKdTreeType kdtree_surface_map_[kGlobalMapWindowSize];
-  PointKdTreeType kdtree_none_map_[kGlobalMapWindowSize];
-  PointCloudType global_corner_map_[kGlobalMapWindowSize];
-  PointCloudType global_surface_map_[kGlobalMapWindowSize];
-  PointCloudType global_none_map_[kGlobalMapWindowSize];
-  int laser_center_width_last_ = 10;
-  int laser_center_height_last_ = 5;
-  int laser_center_depth_last_ = 10;
-  
+  double param_plane_tangent_weight_ = 0.0;
+  double param_search_dist_threshold_ = 1.0;
 };
 
 } // end of namespace lio
 
-#endif // LIO_POSE_ESTIMATOR_HPP
+#endif // end of LIO_POSE_ESTIMATOR_HPP

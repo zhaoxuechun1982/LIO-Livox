@@ -11,6 +11,7 @@
 #include "lio/lidar_feature_matcher.hpp"
 #include "lio/pose_estimator.hpp"
 #include "lio/map_manager.hpp"
+#include "lio/map_cacher.hpp"
 #include "utils/ceres_utils.hpp"
 #include "sophus/so3.hpp"
 #include <ros/ros.h>
@@ -49,7 +50,8 @@ void LidarFeatureMatcher::match_point_to_line(CeresCostFunctionPtrVector& edges,
                                               const PointCloudTypePtr& cloud_corner_local,
                                               const PointKdTreeTypePtr& kdtree_local,
                                               const Eigen::Matrix4d& exTlb,
-                                              const Eigen::Matrix4d& m4d)
+                                              const Eigen::Matrix4d& m4d,
+                                              const MapCacher* map_cacher_ptr)
 {
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
@@ -84,102 +86,100 @@ void LidarFeatureMatcher::match_point_to_line(CeresCostFunctionPtrVector& edges,
   for (int i = 0; i < laserCloudCornerStackNum; i++) {
     _pointOri = corner_cloud->points[i];
     MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
-    int id = host_->map_manager_ptr_->FindUsedCornerMap(&_pointSel,
-                                                        host_->laser_center_width_last_,
-                                                        host_->laser_center_height_last_,
-                                                        host_->laser_center_depth_last_);
 
+    int id = MapManager::find_corner_map_used(&_pointSel,
+             map_cacher_ptr->cloud_center_width_last_,
+             map_cacher_ptr->cloud_center_height_last_,
+             map_cacher_ptr->cloud_center_depth_last_);
+         
     if(id == 5000) continue;
 
-    if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
+    if (std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(host_->global_corner_map_[id].points.size() > 100) {
-      host_->kdtree_corner_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
-      
-      if (_pointSearchSqDis[4] < host_->thres_dist) {
-
+    if (map_cacher_ptr->global_cloud_corner_map_[id].points.size() > 100) {
+      map_cacher_ptr->global_kdtree_corner_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+      if (_pointSearchSqDis[4] < map_cacher_ptr->param_search_dist_threshold_) {
         debug_num1 ++;
-      float cx = 0;
-      float cy = 0;
-      float cz = 0;
-      for (int j = 0; j < 5; j++) {
-        cx += host_->global_corner_map_[id].points[_pointSearchInd[j]].x;
-        cy += host_->global_corner_map_[id].points[_pointSearchInd[j]].y;
-        cz += host_->global_corner_map_[id].points[_pointSearchInd[j]].z;
+        float cx = 0;
+        float cy = 0;
+        float cz = 0;
+        for (int j = 0; j < 5; j++) {
+          cx += map_cacher_ptr->global_cloud_corner_map_[id].points[_pointSearchInd[j]].x;
+          cy += map_cacher_ptr->global_cloud_corner_map_[id].points[_pointSearchInd[j]].y;
+          cz += map_cacher_ptr->global_cloud_corner_map_[id].points[_pointSearchInd[j]].z;
+        }
+        cx /= 5;
+        cy /= 5;
+        cz /= 5;
+
+        float a11 = 0;
+        float a12 = 0;
+        float a13 = 0;
+        float a22 = 0;
+        float a23 = 0;
+        float a33 = 0;
+        for (int j = 0; j < 5; j++) {
+          float ax = map_cacher_ptr->global_cloud_corner_map_[id].points[_pointSearchInd[j]].x - cx;
+          float ay = map_cacher_ptr->global_cloud_corner_map_[id].points[_pointSearchInd[j]].y - cy;
+          float az = map_cacher_ptr->global_cloud_corner_map_[id].points[_pointSearchInd[j]].z - cz;
+
+          a11 += ax * ax;
+          a12 += ax * ay;
+          a13 += ax * az;
+          a22 += ay * ay;
+          a23 += ay * az;
+          a33 += az * az;
+        }
+        a11 /= 5;
+        a12 /= 5;
+        a13 /= 5;
+        a22 /= 5;
+        a23 /= 5;
+        a33 /= 5;
+
+        _matA1(0, 0) = a11;
+        _matA1(0, 1) = a12;
+        _matA1(0, 2) = a13;
+        _matA1(1, 0) = a12;
+        _matA1(1, 1) = a22;
+        _matA1(1, 2) = a23;
+        _matA1(2, 0) = a13;
+        _matA1(2, 1) = a23;
+        _matA1(2, 2) = a33;
+
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(_matA1);
+        Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
+
+        if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
+          debug_num12 ++;
+          float x1 = cx + 0.1 * unit_direction[0];
+          float y1 = cy + 0.1 * unit_direction[1];
+          float z1 = cz + 0.1 * unit_direction[2];
+          float x2 = cx - 0.1 * unit_direction[0];
+          float y2 = cy - 0.1 * unit_direction[1];
+          float z2 = cz - 0.1 * unit_direction[2];
+
+          Eigen::Vector3d tripod1(x1, y1, z1);
+          Eigen::Vector3d tripod2(x2, y2, z2);
+          auto* e = Cost_NavState_IMU_Line::Create(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+                                                   tripod1,
+                                                   tripod2,
+                                                   Tbl,
+                                                   Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
+          edges.push_back(e);
+          line_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
+                                     tripod1,
+                                     tripod2);
+          line_features.back().calculate_error(m4d);
+
+          continue;
+        }
       }
-      cx /= 5;
-      cy /= 5;
-      cz /= 5;
-
-      float a11 = 0;
-      float a12 = 0;
-      float a13 = 0;
-      float a22 = 0;
-      float a23 = 0;
-      float a33 = 0;
-      for (int j = 0; j < 5; j++) {
-        float ax = host_->global_corner_map_[id].points[_pointSearchInd[j]].x - cx;
-        float ay = host_->global_corner_map_[id].points[_pointSearchInd[j]].y - cy;
-        float az = host_->global_corner_map_[id].points[_pointSearchInd[j]].z - cz;
-
-        a11 += ax * ax;
-        a12 += ax * ay;
-        a13 += ax * az;
-        a22 += ay * ay;
-        a23 += ay * az;
-        a33 += az * az;
-      }
-      a11 /= 5;
-      a12 /= 5;
-      a13 /= 5;
-      a22 /= 5;
-      a23 /= 5;
-      a33 /= 5;
-
-      _matA1(0, 0) = a11;
-      _matA1(0, 1) = a12;
-      _matA1(0, 2) = a13;
-      _matA1(1, 0) = a12;
-      _matA1(1, 1) = a22;
-      _matA1(1, 2) = a23;
-      _matA1(2, 0) = a13;
-      _matA1(2, 1) = a23;
-      _matA1(2, 2) = a33;
-
-      Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(_matA1);
-      Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
-
-      if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
-        debug_num12 ++;
-        float x1 = cx + 0.1 * unit_direction[0];
-        float y1 = cy + 0.1 * unit_direction[1];
-        float z1 = cz + 0.1 * unit_direction[2];
-        float x2 = cx - 0.1 * unit_direction[0];
-        float y2 = cy - 0.1 * unit_direction[1];
-        float z2 = cz - 0.1 * unit_direction[2];
-
-        Eigen::Vector3d tripod1(x1, y1, z1);
-        Eigen::Vector3d tripod2(x2, y2, z2);
-        auto* e = Cost_NavState_IMU_Line::Create(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
-                                                 tripod1,
-                                                 tripod2,
-                                                 Tbl,
-                                                 Eigen::Matrix<double, 1, 1>(1/IMUIntegrator::lidar_m));
-        edges.push_back(e);
-        line_features.emplace_back(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
-                                   tripod1,
-                                   tripod2);
-        line_features.back().calculate_error(m4d);
-
-        continue;
-      }
-    }
-    
     }
 
     if(cloud_corner_local->points.size() > 20 ){
       kdtree_local->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
-      if (_pointSearchSqDis2[4] < host_->thres_dist) {
+      if (_pointSearchSqDis2[4] < map_cacher_ptr->param_search_dist_threshold_) {
 
         debug_num2 ++;
         float cx = 0;
@@ -260,12 +260,13 @@ void LidarFeatureMatcher::match_point_to_line(CeresCostFunctionPtrVector& edges,
 }
 
 void LidarFeatureMatcher::match_point_to_plane(CeresCostFunctionPtrVector& edges,
-                                   FeaturePlaneVector& plane_features,
-                                   const PointCloudTypePtr& cloud_surface,
-                                   const PointCloudTypePtr& cloud_surface_local,
-                                   const PointKdTreeType::Ptr& kdtree_local,
-                                   const Eigen::Matrix4d& exTlb,
-                                   const Eigen::Matrix4d& m4d)
+                                               FeaturePlaneVector& plane_features,
+                                               const PointCloudTypePtr& cloud_surface,
+                                               const PointCloudTypePtr& cloud_surface_local,
+                                               const PointKdTreeType::Ptr& kdtree_local,
+                                               const Eigen::Matrix4d& exTlb,
+                                               const Eigen::Matrix4d& m4d,
+                                               const MapCacher* map_cacher_ptr)
 {
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
@@ -306,21 +307,24 @@ void LidarFeatureMatcher::match_point_to_plane(CeresCostFunctionPtrVector& edges
     _pointOri = cloud_surface->points[i];
     MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
 
-    int id = host_->map_manager_ptr_->FindUsedSurfMap(&_pointSel,host_->laser_center_width_last_,host_->laser_center_height_last_,host_->laser_center_depth_last_);
+    int id = MapManager::find_surface_map_used(&_pointSel,
+            map_cacher_ptr->cloud_center_width_last_,
+            map_cacher_ptr->cloud_center_height_last_,
+            map_cacher_ptr->cloud_center_depth_last_);
 
     if(id == 5000) continue;
 
     if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(host_->global_surface_map_[id].points.size() > 50) {
-      host_->kdtree_surface_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+    if(map_cacher_ptr->global_cloud_surface_map_[id].points.size() > 50) {
+      map_cacher_ptr->global_kdtree_surface_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
 
       if (_pointSearchSqDis[4] < 1.0) {
         debug_num1 ++;
         for (int j = 0; j < 5; j++) {
-          _matA0(j, 0) = host_->global_surface_map_[id].points[_pointSearchInd[j]].x;
-          _matA0(j, 1) = host_->global_surface_map_[id].points[_pointSearchInd[j]].y;
-          _matA0(j, 2) = host_->global_surface_map_[id].points[_pointSearchInd[j]].z;
+          _matA0(j, 0) = map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].x;
+          _matA0(j, 1) = map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].y;
+          _matA0(j, 2) = map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].z;
         }
         _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -337,9 +341,9 @@ void LidarFeatureMatcher::match_point_to_plane(CeresCostFunctionPtrVector& edges
 
         bool planeValid = true;
         for (int j = 0; j < 5; j++) {
-          if (std::fabs(pa * host_->global_surface_map_[id].points[_pointSearchInd[j]].x +
-                        pb * host_->global_surface_map_[id].points[_pointSearchInd[j]].y +
-                        pc * host_->global_surface_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
+          if (std::fabs(pa * map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].x +
+                        pb * map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].y +
+                        pc * map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
             planeValid = false;
             break;
           }
@@ -429,7 +433,8 @@ void LidarFeatureMatcher::match_point_to_plane_vector(CeresCostFunctionPtrVector
                                    const PointCloudTypePtr& cloud_surface_local,
                                    const PointKdTreeTypePtr& kdtree_local,
                                    const Eigen::Matrix4d& exTlb,
-                                   const Eigen::Matrix4d& m4d)
+                                   const Eigen::Matrix4d& m4d,
+                                   const MapCacher* map_cacher_ptr)
 {
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
@@ -467,21 +472,24 @@ void LidarFeatureMatcher::match_point_to_plane_vector(CeresCostFunctionPtrVector
     _pointOri = cloud_surface->points[i];
     MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
 
-    int id = host_->map_manager_ptr_->FindUsedSurfMap(&_pointSel,host_->laser_center_width_last_,host_->laser_center_height_last_,host_->laser_center_depth_last_);
+    int id = MapManager::find_surface_map_used(&_pointSel,
+             map_cacher_ptr->cloud_center_width_last_,
+             map_cacher_ptr->cloud_center_height_last_,
+             map_cacher_ptr->cloud_center_depth_last_);
 
     if(id == 5000) continue;
 
     if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(host_->global_surface_map_[id].points.size() > 50) {
-      host_->kdtree_surface_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+    if(map_cacher_ptr->global_cloud_surface_map_[id].points.size() > 50) {
+      map_cacher_ptr->global_kdtree_surface_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
 
-      if (_pointSearchSqDis[4] < host_->thres_dist) {
+      if (_pointSearchSqDis[4] < map_cacher_ptr->param_search_dist_threshold_) {
         debug_num1 ++;
         for (int j = 0; j < 5; j++) {
-          _matA0(j, 0) = host_->global_surface_map_[id].points[_pointSearchInd[j]].x;
-          _matA0(j, 1) = host_->global_surface_map_[id].points[_pointSearchInd[j]].y;
-          _matA0(j, 2) = host_->global_surface_map_[id].points[_pointSearchInd[j]].z;
+          _matA0(j, 0) = map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].x;
+          _matA0(j, 1) = map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].y;
+          _matA0(j, 2) = map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].z;
         }
         _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -498,9 +506,9 @@ void LidarFeatureMatcher::match_point_to_plane_vector(CeresCostFunctionPtrVector
 
         bool planeValid = true;
         for (int j = 0; j < 5; j++) {
-          if (std::fabs(pa * host_->global_surface_map_[id].points[_pointSearchInd[j]].x +
-                        pb * host_->global_surface_map_[id].points[_pointSearchInd[j]].y +
-                        pc * host_->global_surface_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
+          if (std::fabs(pa * map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].x +
+                        pb * map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].y +
+                        pc * map_cacher_ptr->global_cloud_surface_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
             planeValid = false;
             break;
           }
@@ -518,8 +526,8 @@ void LidarFeatureMatcher::match_point_to_plane_vector(CeresCostFunctionPtrVector
           Eigen::JacobiSVD<Eigen::Matrix3d> svd(J, Eigen::ComputeThinU | Eigen::ComputeThinV);
           Eigen::Matrix3d R_svd = svd.matrixV() * svd.matrixU().transpose();
           Eigen::Matrix3d info = (1.0/IMUIntegrator::lidar_m) * Eigen::Matrix3d::Identity();
-          info(1, 1) *= host_->plan_weight_tan;
-          info(2, 2) *= host_->plan_weight_tan;
+          info(1, 1) *= map_cacher_ptr->param_plane_tangent_weight_;
+          info(2, 2) *= map_cacher_ptr->param_plane_tangent_weight_;
           Eigen::Matrix3d sqrt_info = info * R_svd.transpose();
 
           auto* e = Cost_NavState_IMU_Plan_Vec::Create(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
@@ -541,7 +549,7 @@ void LidarFeatureMatcher::match_point_to_plane_vector(CeresCostFunctionPtrVector
 
     if(cloud_surface_local->points.size() > 20 ) {
     kdtree_local->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
-    if (_pointSearchSqDis2[4] < host_->thres_dist) {
+    if (_pointSearchSqDis2[4] < map_cacher_ptr->param_search_dist_threshold_) {
       debug_num2++;
       for (int j = 0; j < 5; j++) { 
         _matA0(j, 0) = cloud_surface_local->points[_pointSearchInd2[j]].x;
@@ -583,8 +591,8 @@ void LidarFeatureMatcher::match_point_to_plane_vector(CeresCostFunctionPtrVector
         Eigen::JacobiSVD<Eigen::Matrix3d> svd(J, Eigen::ComputeThinU | Eigen::ComputeThinV);
         Eigen::Matrix3d R_svd = svd.matrixV() * svd.matrixU().transpose();
         Eigen::Matrix3d info = (1.0/IMUIntegrator::lidar_m) * Eigen::Matrix3d::Identity();
-        info(1, 1) *= host_->plan_weight_tan;
-        info(2, 2) *= host_->plan_weight_tan;
+        info(1, 1) *= map_cacher_ptr->param_plane_tangent_weight_;
+        info(2, 2) *= map_cacher_ptr->param_plane_tangent_weight_;
         Eigen::Matrix3d sqrt_info = info * R_svd.transpose();
 
         auto* e = Cost_NavState_IMU_Plan_Vec::Create(Eigen::Vector3d(_pointOri.x,_pointOri.y,_pointOri.z),
@@ -609,7 +617,8 @@ void LidarFeatureMatcher::match_none_feature_icp(CeresCostFunctionPtrVector& edg
                                                  const PointCloudTypePtr& cloud_none_local,
                                                  const PointKdTreeTypePtr& kdtree_local,
                                                  const Eigen::Matrix4d& exTlb,
-                                                 const Eigen::Matrix4d& m4d)
+                                                 const Eigen::Matrix4d& m4d,
+                                                 const MapCacher* map_cacher_ptr)
 {
   Eigen::Matrix4d Tbl = Eigen::Matrix4d::Identity();
   Tbl.topLeftCorner(3,3) = exTlb.topLeftCorner(3,3).transpose();
@@ -646,19 +655,22 @@ void LidarFeatureMatcher::match_none_feature_icp(CeresCostFunctionPtrVector& edg
   for (int i = 0; i < laserCloudNonFeatureStackNum; i++) {
     _pointOri = cloud_none->points[i];
     MapManager::point_associate_to_map(&_pointOri, &_pointSel, m4d);
-    int id = host_->map_manager_ptr_->FindUsedNonFeatureMap(&_pointSel,host_->laser_center_width_last_,host_->laser_center_height_last_,host_->laser_center_depth_last_);
+    int id = MapManager::find_none_map_used(&_pointSel,
+             map_cacher_ptr->cloud_center_width_last_,
+             map_cacher_ptr->cloud_center_height_last_,
+             map_cacher_ptr->cloud_center_depth_last_);
 
     if(id == 5000) continue;
 
     if(std::isnan(_pointSel.x) || std::isnan(_pointSel.y) ||std::isnan(_pointSel.z)) continue;
 
-    if(host_->global_none_map_[id].points.size() > 100) {
-      host_->kdtree_none_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
-      if (_pointSearchSqDis[4] < 1 * host_->thres_dist) {
+    if(map_cacher_ptr->global_cloud_none_map_[id].points.size() > 100) {
+      map_cacher_ptr->global_kdtree_none_map_[id].nearestKSearch(_pointSel, 5, _pointSearchInd, _pointSearchSqDis);
+      if (_pointSearchSqDis[4] < 1 * map_cacher_ptr->param_search_dist_threshold_) {
         for (int j = 0; j < 5; j++) {
-          _matA0(j, 0) = host_->global_none_map_[id].points[_pointSearchInd[j]].x;
-          _matA0(j, 1) = host_->global_none_map_[id].points[_pointSearchInd[j]].y;
-          _matA0(j, 2) = host_->global_none_map_[id].points[_pointSearchInd[j]].z;
+          _matA0(j, 0) = map_cacher_ptr->global_cloud_none_map_[id].points[_pointSearchInd[j]].x;
+          _matA0(j, 1) = map_cacher_ptr->global_cloud_none_map_[id].points[_pointSearchInd[j]].y;
+          _matA0(j, 2) = map_cacher_ptr->global_cloud_none_map_[id].points[_pointSearchInd[j]].z;
         }
         _matX0 = _matA0.colPivHouseholderQr().solve(_matB0);
 
@@ -675,9 +687,9 @@ void LidarFeatureMatcher::match_none_feature_icp(CeresCostFunctionPtrVector& edg
 
         bool planeValid = true;
         for (int j = 0; j < 5; j++) {
-          if (std::fabs(pa * host_->global_none_map_[id].points[_pointSearchInd[j]].x +
-                        pb * host_->global_none_map_[id].points[_pointSearchInd[j]].y +
-                        pc * host_->global_none_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
+          if (std::fabs(pa * map_cacher_ptr->global_cloud_none_map_[id].points[_pointSearchInd[j]].x +
+                        pb * map_cacher_ptr->global_cloud_none_map_[id].points[_pointSearchInd[j]].y +
+                        pc * map_cacher_ptr->global_cloud_none_map_[id].points[_pointSearchInd[j]].z + pd) > 0.2) {
             planeValid = false;
             break;
           }
@@ -708,7 +720,7 @@ void LidarFeatureMatcher::match_none_feature_icp(CeresCostFunctionPtrVector& edg
 
     if(cloud_none_local->points.size() > 20 ){
       kdtree_local->nearestKSearch(_pointSel, 5, _pointSearchInd2, _pointSearchSqDis2);
-      if (_pointSearchSqDis2[4] < 1 * host_->thres_dist) {
+      if (_pointSearchSqDis2[4] < 1 * map_cacher_ptr->param_search_dist_threshold_) {
         for (int j = 0; j < 5; j++) { 
           _matA0(j, 0) = cloud_none_local->points[_pointSearchInd2[j]].x;
           _matA0(j, 1) = cloud_none_local->points[_pointSearchInd2[j]].y;

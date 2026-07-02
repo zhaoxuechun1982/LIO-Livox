@@ -11,7 +11,6 @@
 using namespace lio_data_type;
 namespace lio 
 {
-
 class MapManager
 {
 public:
@@ -74,11 +73,11 @@ public:
     void MapMove(const Eigen::Matrix4d& transformTobeMapped);
 
 
-    size_t FindUsedCornerMap(const PointType *p,int a,int b,int c);
+    static size_t find_corner_map_used(const PointType *p, int a, int b, int c);
 
-    size_t FindUsedSurfMap(const PointType *p,int a,int b,int c);
+    static size_t find_surface_map_used(const PointType *p, int a, int b, int c);
 
-    size_t FindUsedNonFeatureMap(const PointType *p,int a,int b,int c);
+    static size_t find_none_map_used(const PointType *p, int a, int b, int c);
 
     PointKdTreeType get_kdtree_corner_map(int i){
       return kdtree_corner_map_last_[i];
@@ -127,58 +126,50 @@ public:
     }
 
 private:
-    int laserCloudCenWidth = 10;
-    int laserCloudCenHeight = 5;
-    int laserCloudCenDepth = 10;
+  static size_t find_map_used(const PointType *p, int a, int b, int c); 
 
-    int laserCloudCenWidth_last = 10;
-    int laserCloudCenHeight_last = 5;
-    int laserCloudCenDepth_last = 10;
-
-    static const int laserCloudWidth = 21;
-    static const int laserCloudHeight = 11;
-    static const int laserCloudDepth = 21;
-    static const int laserCloudNum = laserCloudWidth * laserCloudHeight * laserCloudDepth;//4851
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerArray[laserCloudNum];
-    pcl::PointCloud<PointType>::Ptr laserCloudSurfArray[laserCloudNum];
-    pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureArray[laserCloudNum];
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerArrayStack[laserCloudNum];
-    pcl::PointCloud<PointType>::Ptr laserCloudSurfArrayStack[laserCloudNum];
-    pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureArrayStack[laserCloudNum];
-
-    static constexpr size_t kVlidVoxelGridCount = 4581;
-    PointCloudType surface_cloud_for_match_[kVlidVoxelGridCount];
-    PointCloudType corner_cloud_for_match_[kVlidVoxelGridCount];
-    PointCloudType none_cloud_for_match_[kVlidVoxelGridCount];
-
-    PointVoxelGridType downSizeFilterCorner;
-    PointVoxelGridType downSizeFilterSurf;
-    PointVoxelGridType downSizeFilterNonFeature;
-
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMap;
-    pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMap;
-    pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureFromMap;
-
-    PointKdTreeType::Ptr laserCloudCornerKdMap[laserCloudNum];
-    PointKdTreeType::Ptr laserCloudSurfKdMap[laserCloudNum];
-    PointKdTreeType::Ptr laserCloudNonFeatureKdMap[laserCloudNum];
-
-    PointKdTreeType CornerKdMap_copy[laserCloudNum];
-    PointKdTreeType SurfKdMap_copy[laserCloudNum];
-    PointKdTreeType NonFeatureKdMap_copy[laserCloudNum];
-
-    PointKdTreeType kdtree_corner_map_last_[laserCloudNum];
-    PointKdTreeType kdtree_surface_map_last_[laserCloudNum];
-    PointKdTreeType kdtree_none_map_last_[laserCloudNum];
-
-    static constexpr size_t kLocalMapWindowSize = 60;
-    pcl::PointCloud<PointType>::Ptr local_corner_map_[kLocalMapWindowSize];
-    pcl::PointCloud<PointType>::Ptr local_surface_map_[kLocalMapWindowSize];
-    pcl::PointCloud<PointType>::Ptr local_none_map_[kLocalMapWindowSize];
-
-    int localMapID = 0;
-    int currentUpdatePos = 0;
-    int estimatorPos = 0;
+  int laserCloudCenWidth = 10;
+  int laserCloudCenHeight = 5;
+  int laserCloudCenDepth = 10;
+  int laserCloudCenWidth_last = 10;
+  int laserCloudCenHeight_last = 5;
+  int laserCloudCenDepth_last = 10;
+  static constexpr int kCloudWidth = 21;
+  static constexpr int kCloudHeight = 11;
+  static constexpr int kCloudDepth = 21;
+  static constexpr int laserCloudNum = kCloudWidth * kCloudHeight * kCloudDepth; //4851
+  pcl::PointCloud<PointType>::Ptr laserCloudCornerArray[laserCloudNum];
+  pcl::PointCloud<PointType>::Ptr laserCloudSurfArray[laserCloudNum];
+  pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureArray[laserCloudNum];
+  pcl::PointCloud<PointType>::Ptr laserCloudCornerArrayStack[laserCloudNum];
+  pcl::PointCloud<PointType>::Ptr laserCloudSurfArrayStack[laserCloudNum];
+  pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureArrayStack[laserCloudNum];
+  static constexpr size_t kVlidVoxelGridCount = 4581;
+  PointCloudType surface_cloud_for_match_[kVlidVoxelGridCount];
+  PointCloudType corner_cloud_for_match_[kVlidVoxelGridCount];
+  PointCloudType none_cloud_for_match_[kVlidVoxelGridCount];
+  PointVoxelGridType downSizeFilterCorner;
+  PointVoxelGridType downSizeFilterSurf;
+  PointVoxelGridType downSizeFilterNonFeature;
+  pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMap;
+  pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMap;
+  pcl::PointCloud<PointType>::Ptr laserCloudNonFeatureFromMap;
+  PointKdTreeType::Ptr laserCloudCornerKdMap[laserCloudNum];
+  PointKdTreeType::Ptr laserCloudSurfKdMap[laserCloudNum];
+  PointKdTreeType::Ptr laserCloudNonFeatureKdMap[laserCloudNum];
+  PointKdTreeType CornerKdMap_copy[laserCloudNum];
+  PointKdTreeType SurfKdMap_copy[laserCloudNum];
+  PointKdTreeType NonFeatureKdMap_copy[laserCloudNum];
+  PointKdTreeType kdtree_corner_map_last_[laserCloudNum];
+  PointKdTreeType kdtree_surface_map_last_[laserCloudNum];
+  PointKdTreeType kdtree_none_map_last_[laserCloudNum];
+  static constexpr size_t kLocalMapWindowSize = 60;
+  pcl::PointCloud<PointType>::Ptr local_corner_map_[kLocalMapWindowSize];
+  pcl::PointCloud<PointType>::Ptr local_surface_map_[kLocalMapWindowSize];
+  pcl::PointCloud<PointType>::Ptr local_none_map_[kLocalMapWindowSize];
+  int localMapID = 0;
+  int currentUpdatePos = 0;
+  int estimatorPos = 0;
 };
 
 }

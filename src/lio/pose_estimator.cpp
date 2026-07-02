@@ -2,8 +2,7 @@
 
 namespace lio
 {
-  PoseEstimator::PoseEstimator(const float& filter_corner, const float& filter_surface) :
-    lidar_feature_matcher_(this)
+  PoseEstimator::PoseEstimator(const float& filter_corner, const float& filter_surface)
   {
     pcf_corner_from_local_.reset(new PointCloudType);
     pcf_surface_from_local_.reset(new PointCloudType);
@@ -54,8 +53,9 @@ namespace lio
     miu_thread_ = std::thread(&PoseEstimator::thread_map_increment_update, this);
     miu_thread_running_flag_ = true;
     map_manager_ptr_ = new MapManager(filter_corner, filter_surface);
+    map_cacher_ptr_ = new MapCacher(map_manager_ptr_, filter_corner, filter_surface);
     imu_aligner_ptr_ = ImuAligner::instance_pointer();
-    //lidar_feature_matcher_ptr_ = LidarFeatureMatcher::instance_pointer();
+    lidar_feature_matcher_ptr_ = new LidarFeatureMatcher();
   }
 
   PoseEstimator::~PoseEstimator()
@@ -225,6 +225,9 @@ void PoseEstimator::estimate_lidar_pose(LidarFrameList& lidar_frame_list,
   pcf_none_from_local_->clear();
   update_local_map_increment(pcf_corner_for_map_ptr_, pcf_surface_for_map_ptr_, pcf_none_for_map_ptr_, transformTobeMapped);
   locker.unlock();
+  
+  map_cacher_ptr_->update_global_map_duplicate();
+
 }
 
 void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
@@ -244,20 +247,7 @@ void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
   kdtree_surface_from_local_ptr_->setInputCloud(pcf_surface_from_local_);
   kdtree_none_from_local_ptr_->setInputCloud(pcf_none_from_local_);
 
-  std::unique_lock<std::mutex> locker3(map_manager_ptr_->mtx_MapManager);
-  for(size_t i = 0; i < kValidVoxelGridCount; i++) {
-    kdtree_corner_map_[i] = map_manager_ptr_->get_kdtree_corner_map(i);
-    kdtree_surface_map_[i] = map_manager_ptr_->get_kdtree_surface_map(i);
-    kdtree_none_map_[i] = map_manager_ptr_->get_kdtree_none_map(i);
-
-    global_corner_map_[i] = map_manager_ptr_->get_corner_cloud_for_match(i);
-    global_surface_map_[i] = map_manager_ptr_->get_surface_cloud_for_match(i);
-    global_none_map_[i] = map_manager_ptr_->get_none_cloud_for_match(i);
-  }
-  laser_center_width_last_ = map_manager_ptr_->get_laserCloudCenWidth_last();
-  laser_center_height_last_ = map_manager_ptr_->get_laserCloudCenHeight_last();
-  laser_center_depth_last_ = map_manager_ptr_->get_laserCloudCenDepth_last();
-  locker3.unlock();
+  map_cacher_ptr_->update_global_map_duplicate();
 
   // store point to line features
   std::vector<std::vector<FeatureLine>> vLineFeatures(windowSize);
@@ -277,11 +267,15 @@ void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
   }
 
   if(windowSize == kSlideWindowsSize) {
-    plan_weight_tan = 0.0003;
-    thres_dist = 1.0;
+    //param_plane_tangent_weight_ = 0.0003;
+    //param_search_dist_threshold_ = 1.0;
+    map_cacher_ptr_->set_param_plane_tangent_weight(MapCacher::kValidPlaneTangentWeight);
+    map_cacher_ptr_->set_param_search_dist_threshold(MapCacher::kShortSearchDistThreshold);
   } else {
-    plan_weight_tan = 0.0;
-    thres_dist = 25.0;
+    //param_plane_tangent_weight_ = 0.0;
+    //param_search_dist_threshold_ = 25.0;
+    map_cacher_ptr_->set_param_plane_tangent_weight(MapCacher::kNoValidPlaneTangentWeight);
+    map_cacher_ptr_->set_param_search_dist_threshold(MapCacher::kLongSearchDistThreshold);
   }
 
   // excute optimize process
@@ -345,32 +339,38 @@ void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
       transformTobeMapped.topLeftCorner(3,3) = frame_curr->q * exRbl;
       transformTobeMapped.topRightCorner(3,1) = frame_curr->q * exPbl + frame_curr->p;
 
-      threads[0] = std::thread(&LidarFeatureMatcher::match_point_to_line, &lidar_feature_matcher_,
+      threads[0] = std::thread(&LidarFeatureMatcher::match_point_to_line, 
+                               lidar_feature_matcher_ptr_,
                                std::ref(edgesLine[f]),
                                std::ref(vLineFeatures[f]),
                                std::ref(pcf_corner_stack_[f]),
                                std::ref(pcf_corner_from_local_),
                                std::ref(kdtree_corner_from_local_ptr_),
                                std::ref(exTlb),
-                               std::ref(transformTobeMapped));
+                               std::ref(transformTobeMapped),
+                               map_cacher_ptr_);
 
-      threads[1] = std::thread(&LidarFeatureMatcher::match_point_to_plane_vector, &lidar_feature_matcher_,
+      threads[1] = std::thread(&LidarFeatureMatcher::match_point_to_plane_vector, 
+                               lidar_feature_matcher_ptr_,
                                std::ref(edgesPlan[f]),
                                std::ref(vPlanFeatures[f]),
                                std::ref(pcf_surface_stack_[f]),
                                std::ref(pcf_surface_from_local_),
                                std::ref(kdtree_surface_from_local_ptr_),
                                std::ref(exTlb),
-                               std::ref(transformTobeMapped));
+                               std::ref(transformTobeMapped),
+                               map_cacher_ptr_);
 
-      threads[2] = std::thread(&LidarFeatureMatcher::match_none_feature_icp, &lidar_feature_matcher_,
+      threads[2] = std::thread(&LidarFeatureMatcher::match_none_feature_icp, 
+                               lidar_feature_matcher_ptr_,
                                std::ref(edgesNon[f]),
                                std::ref(vNonFeatures[f]),
                                std::ref(pcf_none_stack_[f]),
                                std::ref(pcf_none_from_local_),
                                std::ref(kdtree_none_from_local_ptr_),
                                std::ref(exTlb),
-                               std::ref(transformTobeMapped));
+                               std::ref(transformTobeMapped),
+                               map_cacher_ptr_);
       threads[0].join();
       threads[1].join();
       threads[2].join();
@@ -380,7 +380,8 @@ void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
     int cntCorner = 0;
     int cntNon = 0;
     if(windowSize == kSlideWindowsSize) {
-      thres_dist = 1.0;
+      //param_search_dist_threshold_ = 1.0;
+      map_cacher_ptr_->set_param_search_dist_threshold(MapCacher::kShortSearchDistThreshold);
       if(iterOpt == 0){
         for(int f=0; f<windowSize; ++f){
           int cntFtu = 0;
@@ -450,9 +451,11 @@ void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
       }
     } else {
         if(iterOpt == 0) {
-          thres_dist = 10.0;
+          // param_search_dist_threshold_ = 10.0;
+          map_cacher_ptr_->set_param_search_dist_threshold(MapCacher::kLongSearchDistThreshold);
         } else {
-          thres_dist = 1.0;
+          // param_search_dist_threshold_ = 1.0;
+          map_cacher_ptr_->set_param_search_dist_threshold(MapCacher::kShortSearchDistThreshold);
         }
         for(int f=0; f<windowSize; ++f){
           int cntFtu = 0;
@@ -549,32 +552,38 @@ void PoseEstimator::estimate(std::list<LidarFrame>& lidarFrameList,
       edgesLine[f].clear();
       edgesPlan[f].clear();
       edgesNon[f].clear();
-      threads[0] = std::thread(&LidarFeatureMatcher::match_point_to_line, &lidar_feature_matcher_,
+      threads[0] = std::thread(&LidarFeatureMatcher::match_point_to_line, 
+                               lidar_feature_matcher_ptr_,
                                std::ref(edgesLine[f]),
                                std::ref(vLineFeatures[f]),
                                std::ref(pcf_corner_stack_[f]),
                                std::ref(pcf_corner_from_local_),
                                std::ref(kdtree_corner_from_local_ptr_),
                                std::ref(exTlb),
-                               std::ref(transformTobeMapped));
+                               std::ref(transformTobeMapped),
+                               map_cacher_ptr_);
 
-      threads[1] = std::thread(&LidarFeatureMatcher::match_point_to_plane_vector, &lidar_feature_matcher_,
+      threads[1] = std::thread(&LidarFeatureMatcher::match_point_to_plane_vector, 
+                               lidar_feature_matcher_ptr_,
                                std::ref(edgesPlan[f]),
                                std::ref(vPlanFeatures[f]),
                                std::ref(pcf_surface_stack_[f]),
                                std::ref(pcf_surface_from_local_),
                                std::ref(kdtree_surface_from_local_ptr_),
                                std::ref(exTlb),
-                               std::ref(transformTobeMapped));
+                               std::ref(transformTobeMapped),
+                               map_cacher_ptr_);
 
-      threads[2] = std::thread(&LidarFeatureMatcher::match_none_feature_icp, &lidar_feature_matcher_,
+      threads[2] = std::thread(&LidarFeatureMatcher::match_none_feature_icp, 
+                               lidar_feature_matcher_ptr_,
                                std::ref(edgesNon[f]),
                                std::ref(vNonFeatures[f]),
                                std::ref(pcf_none_stack_[f]),
                                std::ref(pcf_none_from_local_),
                                std::ref(kdtree_none_from_local_ptr_),
                                std::ref(exTlb),
-                               std::ref(transformTobeMapped));      
+                               std::ref(transformTobeMapped),
+                               map_cacher_ptr_);     
                       
       threads[0].join();
       threads[1].join();

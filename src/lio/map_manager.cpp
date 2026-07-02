@@ -35,7 +35,7 @@ MapManager::MapManager(const float& filter_corner, const float& filter_surf)
 
 size_t MapManager::ToIndex(int i, int j, int k) 
 {
-  return i + laserCloudDepth * j + laserCloudDepth * laserCloudWidth * k;
+  return i + kCloudDepth * j + kCloudDepth * kCloudWidth * k;
 }
 
 /** \brief transform point pi to the MAP coordinate
@@ -135,10 +135,10 @@ void MapManager::map_increment_update(const PointCloudType::Ptr& laserCloudCorne
     if (pointSel.y + 25.0 < 0) cubeJ--;
     if (pointSel.z + 25.0 < 0) cubeK--;
 
-    if (cubeI >= 0 && cubeI < laserCloudDepth &&
-        cubeJ >= 0 && cubeJ < laserCloudWidth &&
+    if (cubeI >= 0 && cubeI < kCloudDepth &&
+        cubeJ >= 0 && cubeJ < kCloudWidth &&
         cubeK >= 0 &&
-        cubeK < laserCloudHeight) {
+        cubeK < kCloudHeight) {
       size_t cubeInd = ToIndex(cubeI, cubeJ, cubeK);
       laserCloudCornerArray[cubeInd]->push_back(pointSel);
       CornerChangeFlag[cubeInd] = true;
@@ -155,9 +155,9 @@ void MapManager::map_increment_update(const PointCloudType::Ptr& laserCloudCorne
     if (pointSel.y + 25.0 < 0) cubeJ--;
     if (pointSel.z + 25.0 < 0) cubeK--;
 
-    if (cubeI >= 0 && cubeI < laserCloudDepth &&
-        cubeJ >= 0 && cubeJ < laserCloudWidth &&
-        cubeK >= 0 && cubeK < laserCloudHeight) {
+    if (cubeI >= 0 && cubeI < kCloudDepth &&
+        cubeJ >= 0 && cubeJ < kCloudWidth &&
+        cubeK >= 0 && cubeK < kCloudHeight) {
       size_t cubeInd = ToIndex(cubeI, cubeJ, cubeK);
       laserCloudSurfArray[cubeInd]->push_back(pointSel);
       SurfChangeFlag[cubeInd] = true;
@@ -174,9 +174,9 @@ void MapManager::map_increment_update(const PointCloudType::Ptr& laserCloudCorne
     if (pointSel.y + 25.0 < 0) cubeJ--;
     if (pointSel.z + 25.0 < 0) cubeK--;
 
-    if (cubeI >= 0 && cubeI < laserCloudDepth &&
-        cubeJ >= 0 && cubeJ < laserCloudWidth &&
-        cubeK >= 0 && cubeK < laserCloudHeight) {
+    if (cubeI >= 0 && cubeI < kCloudDepth &&
+        cubeJ >= 0 && cubeJ < kCloudWidth &&
+        cubeK >= 0 && cubeK < kCloudHeight) {
       size_t cubeInd = ToIndex(cubeI, cubeJ, cubeK);
       laserCloudNonFeatureArray[cubeInd]->push_back(pointSel);
       NonFeatureChangeFlag[cubeInd] = true;
@@ -271,9 +271,9 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
   if (transformTobeMapped_t.z() + 25.0 < 0) centerCubeK--;
 
   while (centerCubeI < 8) {
-    for (int j = 0; j < laserCloudWidth; j++) {
-      for (int k = 0; k < laserCloudHeight; k++) {
-        int i = laserCloudDepth - 1;
+    for (int j = 0; j < kCloudWidth; j++) {
+      for (int k = 0; k < kCloudHeight; k++) {
+        int i = kCloudDepth - 1;
         PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
         PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
@@ -318,9 +318,9 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     laserCloudCenDepth++;
   }
 
-  while (centerCubeI >= laserCloudDepth - 8) {
-    for (int j = 0; j < laserCloudWidth; j++) {
-      for (int k = 0; k < laserCloudHeight; k++) {
+  while (centerCubeI >= kCloudDepth - 8) {
+    for (int j = 0; j < kCloudWidth; j++) {
+      for (int k = 0; k < kCloudHeight; k++) {
         int i = 0;
         PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
@@ -336,7 +336,7 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
         PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
         
-        for (; i < laserCloudDepth - 1; i++) {
+        for (; i < kCloudDepth - 1; i++) {
           const size_t index_a = ToIndex(i, j, k);
           const size_t index_b = ToIndex(i + 1, j, k);
           laserCloudCornerKdMap[index_a] = laserCloudCornerKdMap[index_b];
@@ -365,9 +365,9 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
   }
 
   while (centerCubeJ < 8) {
-    for (int i = 0; i < laserCloudDepth; i++) {
-      for (int k = 0; k < laserCloudHeight; k++) {
-        int j = laserCloudWidth - 1;
+    for (int i = 0; i < kCloudDepth; i++) {
+      for (int k = 0; k < kCloudHeight; k++) {
+        int j = kCloudWidth - 1;
         PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
         PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
@@ -409,9 +409,9 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     laserCloudCenWidth++;
   }
 
-  while (centerCubeJ >= laserCloudWidth - 8) {
-    for (int i = 0; i < laserCloudDepth; i++) {
-      for (int k = 0; k < laserCloudHeight; k++) {
+  while (centerCubeJ >= kCloudWidth - 8) {
+    for (int i = 0; i < kCloudDepth; i++) {
+      for (int k = 0; k < kCloudHeight; k++) {
         int j = 0;
         PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
@@ -426,7 +426,7 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
                 laserCloudSurfArray[ToIndex(i, j, k)];
         PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
-        for (; j < laserCloudWidth - 1; j++) {
+        for (; j < kCloudWidth - 1; j++) {
           const size_t index_a = ToIndex(i, j, k);
           const size_t index_b = ToIndex(i, j + 1, k);
           laserCloudCornerKdMap[index_a] = laserCloudCornerKdMap[index_b];
@@ -455,9 +455,9 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
   }
 
   while (centerCubeK < 8) {
-    for (int i = 0; i < laserCloudDepth; i++) {
-      for (int j = 0; j < laserCloudWidth; j++) {
-        int k = laserCloudHeight - 1;
+    for (int i = 0; i < kCloudDepth; i++) {
+      for (int j = 0; j < kCloudWidth; j++) {
+        int k = kCloudHeight - 1;
         PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
         PointKdTreeType::Ptr laserCloudCubeSurfPointerKd =
@@ -499,9 +499,9 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
     laserCloudCenHeight++;
   }
 
-  while (centerCubeK >= laserCloudHeight - 8) {
-    for (int i = 0; i < laserCloudDepth; i++) {
-      for (int j = 0; j < laserCloudWidth; j++) {
+  while (centerCubeK >= kCloudHeight - 8) {
+    for (int i = 0; i < kCloudDepth; i++) {
+      for (int j = 0; j < kCloudWidth; j++) {
         int k = 0;
         PointKdTreeType::Ptr laserCloudCubeCornerPointerKd =
                 laserCloudCornerKdMap[ToIndex(i, j, k)];
@@ -516,7 +516,7 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
                 laserCloudSurfArray[ToIndex(i, j, k)];
         PointCloudType::Ptr laserCloudCubeNonFeaturePointer =
                 laserCloudNonFeatureArray[ToIndex(i, j, k)];
-        for (; k < laserCloudHeight - 1; k++) {
+        for (; k < kCloudHeight - 1; k++) {
           const size_t index_a = ToIndex(i, j, k);
           const size_t index_b = ToIndex(i, j, k + 1);
           laserCloudCornerKdMap[index_a] = laserCloudCornerKdMap[index_b];
@@ -546,75 +546,42 @@ void MapManager::MapMove(const Eigen::Matrix4d& transformTobeMapped){
 
 }
 
-size_t MapManager::FindUsedCornerMap(const PointType *p,int a,int b, int c)
+size_t MapManager::find_map_used(const PointType *p, int a, int b, int c)
 {
-    int cubeI = int((p->x + 25.0) / 50.0) + c;
-    int cubeJ = int((p->y + 25.0) / 50.0) + a;
-    int cubeK = int((p->z + 25.0) / 50.0) + b;
+  int cubeI = int((p->x + 25.0) / 50.0) + c;
+  int cubeJ = int((p->y + 25.0) / 50.0) + a;
+  int cubeK = int((p->z + 25.0) / 50.0) + b;
 
-    size_t cubeInd = 0;
+  size_t cubeInd = 0;
 
-    if (p->x + 25.0 < 0) cubeI--;
-    if (p->y + 25.0 < 0) cubeJ--;
-    if (p->z + 25.0 < 0) cubeK--;
+  if (p->x + 25.0 < 0) cubeI--;
+  if (p->y + 25.0 < 0) cubeJ--;
+  if (p->z + 25.0 < 0) cubeK--;
 
-    if (cubeI >= 0 && cubeI < laserCloudDepth &&
-        cubeJ >= 0 && cubeJ < laserCloudWidth &&
-        cubeK >= 0 && cubeK < laserCloudHeight) {
-      cubeInd = ToIndex(cubeI, cubeJ, cubeK);
-    }
-    else{
-      cubeInd = 5000;
-    }
-
-    return cubeInd;  
-}
-size_t MapManager::FindUsedSurfMap(const PointType *p,int a,int b, int c)
-{
-    int cubeI = int((p->x + 25.0) / 50.0) + c;
-    int cubeJ = int((p->y + 25.0) / 50.0) + a;
-    int cubeK = int((p->z + 25.0) / 50.0) + b;
-
-    size_t cubeInd = 0;
-
-    if (p->x + 25.0 < 0) cubeI--;
-    if (p->y + 25.0 < 0) cubeJ--;
-    if (p->z + 25.0 < 0) cubeK--;
-
-    if (cubeI >= 0 && cubeI < laserCloudDepth &&
-        cubeJ >= 0 && cubeJ < laserCloudWidth &&
-        cubeK >= 0 && cubeK < laserCloudHeight) {
-      cubeInd = ToIndex(cubeI, cubeJ, cubeK);
-    }
-    else{
-      cubeInd = 5000;
-    }
-
-    return cubeInd;
+  if (cubeI >= 0 && cubeI < kCloudDepth &&
+      cubeJ >= 0 && cubeJ < kCloudWidth &&
+      cubeK >= 0 && cubeK < kCloudHeight) {
+    cubeInd = ToIndex(cubeI, cubeJ, cubeK);
+  }
+  else{
+    cubeInd = 5000;
+  }
+  return cubeInd; 
 }
 
-size_t MapManager::FindUsedNonFeatureMap(const PointType *p,int a,int b, int c)
+size_t MapManager::find_corner_map_used(const PointType *p,int a,int b, int c)
 {
-    int cubeI = int((p->x + 25.0) / 50.0) + c;
-    int cubeJ = int((p->y + 25.0) / 50.0) + a;
-    int cubeK = int((p->z + 25.0) / 50.0) + b;
+  return find_map_used(p,a,b,c);
+}
 
-    size_t cubeInd = 0;
+size_t MapManager::find_surface_map_used(const PointType *p,int a,int b, int c)
+{
+  return find_map_used(p,a,b,c);
+}
 
-    if (p->x + 25.0 < 0) cubeI--;
-    if (p->y + 25.0 < 0) cubeJ--;
-    if (p->z + 25.0 < 0) cubeK--;
-
-    if (cubeI >= 0 && cubeI < laserCloudDepth &&
-        cubeJ >= 0 && cubeJ < laserCloudWidth &&
-        cubeK >= 0 && cubeK < laserCloudHeight) {
-      cubeInd = ToIndex(cubeI, cubeJ, cubeK);
-    }
-    else{
-      cubeInd = 5000;
-    }
-
-    return cubeInd; 
+size_t MapManager::find_none_map_used(const PointType *p,int a,int b, int c)
+{
+  return find_map_used(p,a,b,c); 
 }
 
 } // end of namespace lio
